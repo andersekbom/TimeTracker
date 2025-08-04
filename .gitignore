@@ -9,6 +9,7 @@
 
 # Credentials and sensitive data
 include/WiFiCredentials.h
+src/WiFiCredentials.cpp
 *.credentials
 *.secrets
 
