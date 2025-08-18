@@ -1,5 +1,5 @@
 #include "NetworkManager.h"
-#include "WiFiCredentials.h"
+#include "Configuration.h"
 #include "Config.h"
 
 NetworkManager::NetworkManager() {

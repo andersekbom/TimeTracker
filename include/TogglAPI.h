@@ -10,16 +10,13 @@ private:
     HttpClient* client;
     String currentTimeEntryId;
     String currentTimeEntryName;
-    int projectIds[6];
     
     String base64Encode(const String& str);
     String getCurrentTimeISO();
-    void populateProjectIds(const String& response);
 
 public:
     TogglAPI(HttpClient* httpClient);
     
-    bool getProjects();
     bool startTimeEntry(int orientationIndex, const String& description);
     bool stopCurrentTimeEntry();
     

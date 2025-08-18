@@ -1,5 +1,5 @@
 #include "OrientationDetector.h"
-#include "WiFiCredentials.h"
+#include "Configuration.h"
 
 #if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
   #include <Arduino_LSM6DSOX.h>
