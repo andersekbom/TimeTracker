@@ -1,14 +1,10 @@
 #include "TogglAPI.h"
-#include "WiFiCredentials.h"
+#include "Configuration.h"
 #include "Config.h"
 
 TogglAPI::TogglAPI(HttpClient* httpClient) : client(httpClient) {
     currentTimeEntryId = "";
     currentTimeEntryName = "";
-    // Initialize project IDs array
-    for (int i = 0; i < 6; i++) {
-        projectIds[i] = 0;
-    }
 }
 
 String TogglAPI::base64Encode(const String& str) {
@@ -96,48 +92,7 @@ String TogglAPI::getCurrentTimeISO() {
     return iso;
 }
 
-bool TogglAPI::getProjects() {
-    if (!client) return false;
 
-    client->beginRequest();
-    client->get("/api/v9/workspaces/" + String(workspaceId) + "/projects");
-    client->sendHeader("Content-Type", "application/json");
-    client->sendHeader("Authorization", "Basic " + base64Encode(String(togglApiToken) + ":api_token"));
-    client->endRequest();
-
-    int statusCode = client->responseStatusCode();
-    String response = client->responseBody();
-
-    if (statusCode == 200) {
-        populateProjectIds(response);
-        Serial.println("Projects loaded successfully");
-        return true;
-    } else {
-        Serial.print("Failed to get projects. Status: ");
-        Serial.println(statusCode);
-        return false;
-    }
-}
-
-void TogglAPI::populateProjectIds(const String& response) {
-    JsonDocument projects;
-    DeserializationError error = deserializeJson(projects, response);
-    
-    if (error) {
-        Serial.print("JSON parsing failed: ");
-        Serial.println(error.c_str());
-        return;
-    }
-
-    int idx = 0;
-    for (JsonObject project : projects.as<JsonArray>()) {
-        int id = project["id"];
-        String name = project["name"];
-        if (name.startsWith("Cube Face") && idx < 6) {
-            projectIds[idx++] = id;
-        }
-    }
-}
 
 bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
     if (!client || orientationIndex < 0 || orientationIndex >= 6) return false;
@@ -146,7 +101,7 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
     timeEntry["description"] = description;
     timeEntry["workspace_id"] = workspaceId;
 
-    int projectId = projectIds[orientationIndex];
+    int projectId = orientationProjectIds[orientationIndex];
     if (projectId != 0) {
         timeEntry["project_id"] = projectId;
     }
@@ -219,7 +174,7 @@ bool TogglAPI::stopCurrentTimeEntry() {
 
 int TogglAPI::getProjectId(int orientationIndex) const {
     if (orientationIndex >= 0 && orientationIndex < 6) {
-        return projectIds[orientationIndex];
+        return orientationProjectIds[orientationIndex];
     }
     return 0;
 }

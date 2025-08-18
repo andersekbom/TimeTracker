@@ -18,7 +18,7 @@
 
 // Project modules
 #include "Config.h"
-#include "WiFiCredentials.h"
+#include "Configuration.h"
 #include "LEDController.h"
 #include "NetworkManager.h"
 #include "OrientationDetector.h"
@@ -88,12 +88,7 @@ void setup() {
     }
     
     // Note: NTP time sync removed - using millis() based timing for API calls
-    
-    // Load projects from Toggl
-    if (!togglAPI.getProjects()) {
-        if (Serial) Serial.println("Warning: Failed to load projects from Toggl");
-        // Continue anyway - we can still track time without project mapping
-    }
+    // Note: Using direct project ID mapping - no need to load projects from Toggl
     
     if (Serial) Serial.println("TimeTracker Cube Ready!");
 }
@@ -129,10 +124,10 @@ void loop() {
             orientationDetector.printOrientation(newOrientation, accelX, accelY, accelZ);
             
             // Start new timer if orientation is known and not break time
-            if (newOrientation != UNKNOWN && newOrientation != BACK_EDGE) {
+            if (newOrientation != UNKNOWN && newOrientation != FACE_UP) {
                 String description = orientationDetector.getOrientationName(newOrientation);
                 togglAPI.startTimeEntry(newOrientation, description);
-            } else if (newOrientation == BACK_EDGE) {
+            } else if (newOrientation == FACE_UP) {
                 if (Serial) Serial.println("Break time - timer stopped, no new entry started");
             }
         }
