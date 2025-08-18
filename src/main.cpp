@@ -1,138 +1,84 @@
 #include <Arduino.h>
-#include <ArduinoHttpClient.h>
+#include <WiFiNINA.h>
+#include <ArduinoBLE.h>
 
-// Platform-specific includes
-#if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
-  #include <WiFiNINA.h>
-  #include <WiFiSSLClient.h>
-  #include <Arduino_LSM6DSOX.h>
-#elif defined(ARDUINO_ARCH_ESP32)
-  #include <WiFi.h>
-  #include <WiFiClientSecure.h>
-  #include <LSM6DS3.h>
-#else
-  #include <WiFiNINA.h>
-  #include <WiFiSSLClient.h>
-  #include <Arduino_LSM6DSOX.h>
-#endif
+// Declare functions from SimpleBLEConfig.cpp
+bool simpleBLEBegin();
+void simpleBLEPoll();
+bool isConfigComplete();
+String getWifiSSID();
+String getWifiPassword();
+String getTogglToken();
 
-// Project modules
-#include "Config.h"
-#include "Configuration.h"
-#include "LEDController.h"
-#include "NetworkManager.h"
-#include "OrientationDetector.h"
-#include "TogglAPI.h"
-
-// Global objects
-LEDController ledController;
-NetworkManager networkManager;
-OrientationDetector orientationDetector(Config::ORIENTATION_THRESHOLD, Config::DEBOUNCE_TIME);
-
-// Network client
-WiFiSSLClient sslClient;
-HttpClient httpClient(sslClient, Config::TOGGL_SERVER, Config::TOGGL_PORT);
-TogglAPI togglAPI(&httpClient);
-
-// IMU data
-float accelX, accelY, accelZ;
+bool bleActive = false;
+bool configTested = false;
 
 void setup() {
-    Serial.begin(Config::SERIAL_BAUD);
+    Serial.begin(115200);
     
-    // Optional serial connection with timeout for standalone operation
-    unsigned long serialTimeout = millis() + 3000; // 3 second timeout
-    while (!Serial && millis() < serialTimeout) {
+    // Wait for serial connection
+    unsigned long timeout = millis() + 3000;
+    while (!Serial && millis() < timeout) {
         delay(100);
     }
     
-    if (Serial) {
-        Serial.println("TimeTracker Cube Starting...");
-    }
+    Serial.println("TimeTracker Simple BLE Test Starting...");
     
-    // Initialize LED controller
-    int ledRetries = 3;
-    while (!ledController.begin() && ledRetries > 0) {
-        ledRetries--;
-        delay(1000);
+    // Start BLE configuration service
+    if (simpleBLEBegin()) {
+        bleActive = true;
+        Serial.println("BLE configuration service active");
+        Serial.println("Use nRF Connect to configure:");
+        Serial.println("1. Write WiFi SSID to characteristic 6ba7b811-...");
+        Serial.println("2. Write WiFi password to characteristic 6ba7b812-...");  
+        Serial.println("3. Write Toggl token to characteristic 6ba7b813-...");
+    } else {
+        Serial.println("Failed to start BLE service");
     }
-    if (ledRetries == 0) {
-        if (Serial) Serial.println("Warning: LED controller failed to initialize");
-        // Continue with basic operation - LED failures are not critical
-    }
-    
-    // Initialize IMU
-    int imuRetries = 5;
-    while (!orientationDetector.begin() && imuRetries > 0) {
-        imuRetries--;
-        delay(2000);
-    }
-    if (imuRetries == 0) {
-        if (Serial) Serial.println("Critical: IMU failed - basic operation only");
-        ledController.showError(); // Brief error indication
-        delay(2000);
-        // Continue with limited functionality
-    }
-    
-    // Connect to WiFi
-    int wifiRetries = 3;
-    while (!networkManager.connectToWiFi() && wifiRetries > 0) {
-        wifiRetries--;
-        delay(5000);
-    }
-    if (wifiRetries == 0) {
-        if (Serial) Serial.println("Warning: WiFi failed - offline mode");
-        ledController.showError(); // Brief error indication
-        delay(2000);
-        // Continue in offline mode
-    }
-    
-    // Note: NTP time sync removed - using millis() based timing for API calls
-    // Note: Using direct project ID mapping - no need to load projects from Toggl
-    
-    if (Serial) Serial.println("TimeTracker Cube Ready!");
 }
 
 void loop() {
-    // Check network connectivity
-    networkManager.reconnectIfNeeded();
-    
-    // Note: Periodic time updates removed - using millis() based timing
-    
-    // Read IMU data
-    if (IMU.accelerationAvailable()) {
-        IMU.readAcceleration(accelX, accelY, accelZ);
+    if (bleActive) {
+        simpleBLEPoll();
         
-        // Determine current orientation
-        Orientation newOrientation = orientationDetector.detectOrientation(accelX, accelY, accelZ);
-        
-        // Check if orientation changed and handle debouncing
-        if (orientationDetector.hasOrientationChanged(newOrientation)) {
+        // Check if configuration is complete and test WiFi
+        if (isConfigComplete() && !configTested) {
+            configTested = true;
             
-            // Stop current timer if running
-            if (!togglAPI.getCurrentEntryId().isEmpty()) {
-                togglAPI.stopCurrentTimeEntry();
+            Serial.println("Testing WiFi connection with received credentials...");
+            Serial.print("SSID: ");
+            Serial.println(getWifiSSID());
+            Serial.println("Password: (hidden)");
+            Serial.print("Toggl Token Length: ");
+            Serial.println(getTogglToken().length());
+            
+            // Test WiFi connection
+            int connectionAttempts = 0;
+            const int maxAttempts = 10;
+            
+            Serial.print("Connecting to WiFi");
+            while (WiFi.begin(getWifiSSID().c_str(), getWifiPassword().c_str()) != WL_CONNECTED && connectionAttempts < maxAttempts) {
+                Serial.print(".");
+                connectionAttempts++;
+                delay(1000);
             }
             
-            // Update orientation
-            orientationDetector.updateOrientation(newOrientation);
-            
-            // Update LED color for new orientation
-            ledController.updateColorForOrientation(newOrientation, Config::LED_MAX_INTENSITY);
-            
-            // Print orientation info for debugging
-            orientationDetector.printOrientation(newOrientation, accelX, accelY, accelZ);
-            
-            // Start new timer if orientation is known and not break time
-            if (newOrientation != UNKNOWN && newOrientation != FACE_UP) {
-                String description = orientationDetector.getOrientationName(newOrientation);
-                togglAPI.startTimeEntry(newOrientation, description);
-            } else if (newOrientation == FACE_UP) {
-                if (Serial) Serial.println("Break time - timer stopped, no new entry started");
+            if (connectionAttempts < maxAttempts) {
+                Serial.println();
+                Serial.print("WiFi connected! IP address: ");
+                Serial.println(WiFi.localIP());
+                Serial.println("SUCCESS: BLE configuration working!");
+                
+                // Stop BLE advertising
+                BLE.stopAdvertise();
+                bleActive = false;
+            } else {
+                Serial.println();
+                Serial.println("WiFi connection failed. Check credentials.");
+                configTested = false; // Allow retry
             }
         }
     }
     
-    // Small delay for stability
-    delay(50);
+    delay(100);
 }

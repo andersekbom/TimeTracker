@@ -19,11 +19,17 @@ public:
     NetworkManager();
     
     bool connectToWiFi();
+    bool connectToWiFi(const String& ssid, const String& password);
     bool isConnected();
     void reconnectIfNeeded();
     
 private:
     void flashConnectionStatus(bool connecting);
+    
+    // Remember last used credentials so reconnect uses runtime config
+    String lastSSID;
+    String lastPassword;
+    bool hasLastCreds = false;
 };
 
 #endif // NETWORK_MANAGER_H

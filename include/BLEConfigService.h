@@ -4,16 +4,18 @@
 #include <Arduino.h>
 #include <ArduinoBLE.h>
 
+// Configuration State Machine states
+enum ConfigState {
+    SETUP_MODE,      // Device advertising and waiting for configuration
+    CONNECTING,      // Attempting WiFi connection
+    CONNECTED,       // Successfully connected and operational
+    ERROR_STATE      // Error occurred, needs attention
+};
+
 class BLEConfigService {
 private:
-    // BLE Service and Characteristics
-    BLEService configService;
-    BLEStringCharacteristic wifiSSIDChar;
-    BLEStringCharacteristic wifiPasswordChar;
-    BLEStringCharacteristic togglTokenChar;
-    BLEStringCharacteristic workspaceIdChar;
-    BLECharacteristic projectIdsChar;
-    BLEStringCharacteristic statusChar;
+    // BLE initialized flag
+    bool bleInitialized;
     
     // Configuration data
     String receivedSSID;
@@ -22,6 +24,10 @@ private:
     String receivedWorkspaceId;
     int receivedProjectIds[6];
     String currentStatus;
+    
+    // State machine
+    ConfigState currentState;
+    unsigned long lastStateChange;
     
     // Static instance pointer for callbacks
     static BLEConfigService* instance;
@@ -57,6 +63,12 @@ public:
     void setStatus(const String& status);
     String getStatus() const { return currentStatus; }
     
+    // State machine management
+    ConfigState getCurrentState() const { return currentState; }
+    void setState(ConfigState newState);
+    const char* getStateDescription() const;
+    bool canTransitionTo(ConfigState newState) const;
+    
     // Configuration validation
     bool hasValidWifiConfig() const;
     bool hasValidTogglConfig() const;
@@ -64,6 +76,9 @@ public:
     
     // Clear received data
     void clearConfiguration();
+    
+    // Configuration processing
+    void processConfiguration();
 };
 
 #endif // BLE_CONFIG_SERVICE_H

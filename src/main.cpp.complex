@@ -1,0 +1,252 @@
+#include <Arduino.h>
+#include <ArduinoHttpClient.h>
+
+// Platform-specific includes
+#if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
+  #include <WiFiNINA.h>
+  #include <WiFiSSLClient.h>
+  #include <Arduino_LSM6DSOX.h>
+#elif defined(ARDUINO_ARCH_ESP32)
+  #include <WiFi.h>
+  #include <WiFiClientSecure.h>
+  #include <LSM6DS3.h>
+#else
+  #include <WiFiNINA.h>
+  #include <WiFiSSLClient.h>
+  #include <Arduino_LSM6DSOX.h>
+#endif
+
+// Project modules
+#include "Config.h"
+#include "Configuration.h"
+#include "LEDController.h"
+#include "NetworkManager.h"
+#include "OrientationDetector.h"
+#include "TogglAPI.h"
+#include "BLEConfigService.h"
+#include "ConfigStorage.h"
+// BLE control
+#include <ArduinoBLE.h>
+
+// Global objects
+LEDController ledController;
+NetworkManager networkManager;
+OrientationDetector orientationDetector(Config::ORIENTATION_THRESHOLD, Config::DEBOUNCE_TIME);
+
+// Network client
+WiFiSSLClient sslClient;
+HttpClient httpClient(sslClient, Config::TOGGL_SERVER, Config::TOGGL_PORT);
+TogglAPI togglAPI(&httpClient);
+
+// IMU data
+float accelX, accelY, accelZ;
+
+// BLE + Config storage
+BLEConfigService* bleService = nullptr;
+ConfigStorage configStorage;
+bool bleActive = false;
+bool bleConnectAttempted = false;
+
+void setup() {
+    Serial.begin(Config::SERIAL_BAUD);
+    
+    // Optional serial connection with timeout for standalone operation
+    unsigned long serialTimeout = millis() + 3000; // 3 second timeout
+    while (!Serial && millis() < serialTimeout) {
+        delay(100);
+    }
+    
+    if (Serial) {
+        Serial.println("TimeTracker Cube Starting...");
+    }
+    
+    // Initialize LED controller
+    int ledRetries = 3;
+    while (!ledController.begin() && ledRetries > 0) {
+        ledRetries--;
+        delay(1000);
+    }
+    if (ledRetries == 0) {
+        if (Serial) Serial.println("Warning: LED controller failed to initialize");
+        // Continue with basic operation - LED failures are not critical
+    }
+    
+    // Initialize IMU
+    int imuRetries = 5;
+    while (!orientationDetector.begin() && imuRetries > 0) {
+        imuRetries--;
+        delay(2000);
+    }
+    if (imuRetries == 0) {
+        if (Serial) Serial.println("Critical: IMU failed - basic operation only");
+        ledController.showError(); // Brief error indication
+        delay(2000);
+        // Continue with limited functionality
+    }
+    
+    // Initialize configuration storage
+    configStorage.begin();
+    bool stored = configStorage.loadConfiguration();
+    bool haveValidStored = stored && configStorage.hasValidConfiguration();
+
+    if (haveValidStored) {
+        // Apply runtime Toggl configuration from storage
+        togglAPI.setCredentials(configStorage.getTogglToken(), configStorage.getWorkspaceId());
+        togglAPI.setProjectIds(configStorage.getProjectIds());
+
+        // Connect to WiFi using stored credentials
+        int wifiRetries = 3;
+        while (!networkManager.connectToWiFi(configStorage.getWifiSSID(), configStorage.getWifiPassword()) && wifiRetries > 0) {
+            wifiRetries--;
+            delay(5000);
+        }
+        if (wifiRetries == 0) {
+            if (Serial) Serial.println("WiFi connect with stored config failed, entering BLE setup mode");
+            // Enter BLE setup mode for reconfiguration
+            if (!bleService) bleService = new BLEConfigService();
+            if (bleService && bleService->begin()) {
+                bleActive = true;
+                bleConnectAttempted = false;
+            }
+        }
+    } else {
+        // No valid configuration: enter BLE setup mode
+        if (Serial) Serial.println("No valid stored configuration found, starting BLE setup mode...");
+        bleService = new BLEConfigService();
+        if (bleService && bleService->begin()) {
+            bleActive = true;
+            bleConnectAttempted = false;
+            if (Serial) Serial.println("BLE setup mode activated successfully");
+        } else {
+            if (Serial) Serial.println("BLE failed to start; cannot enter setup mode");
+        }
+    }
+    
+    // Note: NTP time sync removed - using millis() based timing for API calls
+    // Note: Using direct project ID mapping - no need to load projects from Toggl
+    
+    if (Serial) Serial.println("TimeTracker Cube Ready!");
+}
+
+void loop() {
+    // If BLE setup mode is active, handle configuration workflow and skip normal operation
+    if (bleActive && bleService) {
+        bleService->poll();
+
+        // Update LED animations for single LED boards
+        ledController.updateBLEAnimation();
+        
+        // Handle BLE state transitions with appropriate LED feedback
+        static ConfigState lastBLEState = SETUP_MODE;
+        ConfigState currentBLEState = bleService->getCurrentState();
+        
+        if (currentBLEState != lastBLEState) {
+            // State changed, update LED feedback
+            switch (currentBLEState) {
+                case SETUP_MODE:
+                    ledController.showBLESetupMode();
+                    break;
+                case CONNECTING:
+                    if (!bleConnectAttempted) {
+                        bleConnectAttempted = true;
+                        ledController.showBLEConnecting();
+                        
+                        // Validate configuration before attempting connection
+                        if (!bleService->isConfigurationComplete()) {
+                            if (Serial) Serial.println("Error: Incomplete configuration received");
+                            bleService->setState(ERROR_STATE);
+                            ledController.showBLEError();
+                            bleService->setState(SETUP_MODE);
+                            bleConnectAttempted = false;
+                            break;
+                        }
+                        
+                        // Attempt WiFi using received config
+                        bool ok = networkManager.connectToWiFi(bleService->getWifiSSID(), bleService->getWifiPassword());
+                        if (ok) {
+                            // Persist configuration and apply to Toggl
+                            configStorage.saveConfiguration(
+                                bleService->getWifiSSID(),
+                                bleService->getWifiPassword(),
+                                bleService->getTogglToken(),
+                                bleService->getWorkspaceId(),
+                                bleService->getProjectIds()
+                            );
+                            togglAPI.setCredentials(bleService->getTogglToken(), bleService->getWorkspaceId());
+                            togglAPI.setProjectIds(bleService->getProjectIds());
+
+                            // Update state and stop advertising
+                            bleService->setState(CONNECTED);
+                            BLE.stopAdvertise();
+                            ledController.showBLEConnected();
+                        } else {
+                            bleService->setState(ERROR_STATE);
+                            ledController.showBLEError();
+                            // Allow retry: return to setup mode
+                            bleService->setState(SETUP_MODE);
+                            bleConnectAttempted = false;
+                        }
+                    }
+                    break;
+                case CONNECTED:
+                    ledController.showBLEConnected();
+                    // Exit BLE mode and proceed with normal operation
+                    bleActive = false;
+                    break;
+                case ERROR_STATE:
+                    ledController.showBLEError();
+                    // Allow reconfiguration
+                    bleService->setState(SETUP_MODE);
+                    bleConnectAttempted = false;
+                    break;
+            }
+            lastBLEState = currentBLEState;
+        }
+
+        // Skip rest of loop while configuring
+        delay(50);
+        return;
+    }
+
+    // Check network connectivity
+    networkManager.reconnectIfNeeded();
+    
+    // Note: Periodic time updates removed - using millis() based timing
+    
+    // Read IMU data
+    if (IMU.accelerationAvailable()) {
+        IMU.readAcceleration(accelX, accelY, accelZ);
+        
+        // Determine current orientation
+        Orientation newOrientation = orientationDetector.detectOrientation(accelX, accelY, accelZ);
+        
+        // Check if orientation changed and handle debouncing
+        if (orientationDetector.hasOrientationChanged(newOrientation)) {
+            
+            // Stop current timer if running
+            if (!togglAPI.getCurrentEntryId().isEmpty()) {
+                togglAPI.stopCurrentTimeEntry();
+            }
+            
+            // Update orientation
+            orientationDetector.updateOrientation(newOrientation);
+            
+            // Update LED color for new orientation
+            ledController.updateColorForOrientation(newOrientation, Config::LED_MAX_INTENSITY);
+            
+            // Print orientation info for debugging
+            orientationDetector.printOrientation(newOrientation, accelX, accelY, accelZ);
+            
+            // Start new timer if orientation is known and not break time
+            if (newOrientation != UNKNOWN && newOrientation != FACE_UP) {
+                String description = orientationDetector.getOrientationName(newOrientation);
+                togglAPI.startTimeEntry(newOrientation, description);
+            } else if (newOrientation == FACE_UP) {
+                if (Serial) Serial.println("Break time - timer stopped, no new entry started");
+            }
+        }
+    }
+    
+    // Small delay for stability
+    delay(50);
+}
