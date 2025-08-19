@@ -10,11 +10,53 @@ import {
 } from '../types/TimeTrackerBLE';
 
 export class TimeTrackerBLEService {
+  private static instance: TimeTrackerBLEService | null = null;
   private manager: BleManager;
   private device: Device | null = null;
+  private connectionStateCallbacks: ((connected: boolean, deviceName?: string) => void)[] = [];
+  private isDestroyed = false;
 
-  constructor() {
+  private constructor() {
     this.manager = new BleManager();
+  }
+
+  // Singleton pattern to prevent multiple BLE managers
+  static getInstance(): TimeTrackerBLEService {
+    if (!TimeTrackerBLEService.instance) {
+      TimeTrackerBLEService.instance = new TimeTrackerBLEService();
+    }
+    return TimeTrackerBLEService.instance;
+  }
+
+  // Connection state management
+  onConnectionStateChange(callback: (connected: boolean, deviceName?: string) => void): void {
+    this.connectionStateCallbacks.push(callback);
+  }
+
+  // Remove a specific callback (for cleanup)
+  removeConnectionStateCallback(callback: (connected: boolean, deviceName?: string) => void): void {
+    const index = this.connectionStateCallbacks.indexOf(callback);
+    if (index > -1) {
+      this.connectionStateCallbacks.splice(index, 1);
+    }
+  }
+
+  private notifyConnectionStateChange(connected: boolean, deviceName?: string): void {
+    this.connectionStateCallbacks.forEach(callback => callback(connected, deviceName));
+  }
+
+  // Check if currently connected to a device
+  isConnected(): boolean {
+    return this.device !== null;
+  }
+
+  // Get connected device info
+  getConnectedDevice(): { id: string; name: string } | null {
+    if (!this.device) return null;
+    return {
+      id: this.device.id,
+      name: this.device.name || 'Unknown Device'
+    };
   }
 
   // Request BLE permissions (Android)
@@ -89,10 +131,29 @@ export class TimeTrackerBLEService {
   // Connect to a device
   async connectToDevice(deviceId: string): Promise<void> {
     try {
+      // Stop scanning first
+      this.stopScan();
+      
+      // Connect to device
       this.device = await this.manager.connectToDevice(deviceId);
+      
+      // Set up disconnect monitoring
+      this.device.onDisconnected((error, device) => {
+        console.log(`Device ${device?.name} disconnected:`, error);
+        this.device = null;
+        this.notifyConnectionStateChange(false);
+      });
+      
+      // Discover services and characteristics
       await this.device.discoverAllServicesAndCharacteristics();
       console.log(`Connected to device: ${this.device.name}`);
+      
+      // Notify connection state change
+      this.notifyConnectionStateChange(true, this.device.name || undefined);
+      
     } catch (error) {
+      this.device = null;
+      this.notifyConnectionStateChange(false);
       throw new Error(`Failed to connect to device: ${error}`);
     }
   }
@@ -100,8 +161,14 @@ export class TimeTrackerBLEService {
   // Disconnect from device
   async disconnect(): Promise<void> {
     if (this.device) {
-      await this.device.cancelConnection();
-      this.device = null;
+      try {
+        await this.device.cancelConnection();
+      } catch (error) {
+        console.warn('Error during disconnect:', error);
+      } finally {
+        this.device = null;
+        this.notifyConnectionStateChange(false);
+      }
     }
   }
 
@@ -204,10 +271,23 @@ export class TimeTrackerBLEService {
     return buffer.toString('base64');
   }
 
-  // Cleanup
+  // Cleanup (but don't actually destroy singleton)
   destroy(): void {
+    // Don't destroy the singleton or disconnect active connections
+    // Only stop scanning to save battery
     this.stopScan();
-    this.disconnect();
-    this.manager.destroy();
+    // Don't disconnect - let connections persist across screens
+    // Don't clear callbacks - they need to persist too
+  }
+
+  // Force destroy the singleton (use carefully)
+  static destroyInstance(): void {
+    if (TimeTrackerBLEService.instance) {
+      TimeTrackerBLEService.instance.stopScan();
+      TimeTrackerBLEService.instance.disconnect();
+      TimeTrackerBLEService.instance.manager.destroy();
+      TimeTrackerBLEService.instance.isDestroyed = true;
+      TimeTrackerBLEService.instance = null;
+    }
   }
 }

@@ -13,16 +13,18 @@ import { TimeTrackerDevice } from '../types/TimeTrackerBLE';
 
 interface BLEScannerProps {
   onDeviceSelected?: (device: TimeTrackerDevice) => void;
+  disabled?: boolean;
 }
 
-export const BLEScanner: React.FC<BLEScannerProps> = ({ onDeviceSelected }) => {
+export const BLEScanner: React.FC<BLEScannerProps> = ({ onDeviceSelected, disabled = false }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<TimeTrackerDevice[]>([]);
-  const [bleService] = useState(() => new TimeTrackerBLEService());
+  const [bleService] = useState(() => TimeTrackerBLEService.getInstance());
 
   useEffect(() => {
     return () => {
-      bleService.destroy();
+      // Don't destroy the singleton service, just stop scanning
+      bleService.stopScan();
     };
   }, [bleService]);
 
@@ -70,8 +72,9 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({ onDeviceSelected }) => {
 
   const renderDevice = ({ item }: { item: TimeTrackerDevice }) => (
     <TouchableOpacity 
-      style={styles.deviceItem} 
+      style={[styles.deviceItem, disabled && styles.deviceItemDisabled]} 
       onPress={() => handleDevicePress(item)}
+      disabled={disabled}
     >
       <View style={styles.deviceInfo}>
         <Text style={styles.deviceName}>{item.name}</Text>
@@ -83,35 +86,46 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({ onDeviceSelected }) => {
     </TouchableOpacity>
   );
 
-  return (
-    <View style={styles.container}>
+  const renderHeader = () => (
+    <View style={styles.header}>
       <Text style={styles.title}>TimeTracker Devices</Text>
       
       <TouchableOpacity
-        style={[styles.scanButton, isScanning && styles.scanButtonActive]}
+        style={[
+          styles.scanButton, 
+          isScanning && styles.scanButtonActive,
+          disabled && styles.scanButtonDisabled
+        ]}
         onPress={isScanning ? stopScan : startScan}
-        disabled={isScanning}
+        disabled={isScanning || disabled}
       >
         {isScanning && <ActivityIndicator color="white" style={styles.spinner} />}
         <Text style={styles.scanButtonText}>
           {isScanning ? 'Scanning...' : 'Start Scan'}
         </Text>
       </TouchableOpacity>
+    </View>
+  );
 
-      {devices.length > 0 ? (
-        <FlatList
-          data={devices}
-          renderItem={renderDevice}
-          keyExtractor={item => item.id}
-          style={styles.deviceList}
-        />
-      ) : (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>
-            {isScanning ? 'Looking for TimeTracker devices...' : 'No devices found. Make sure your TimeTracker is in setup mode.'}
-          </Text>
-        </View>
-      )}
+  const renderEmptyComponent = () => (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyText}>
+        {isScanning ? 'Looking for TimeTracker devices...' : 'No devices found. Make sure your TimeTracker is in setup mode.'}
+      </Text>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={devices}
+        renderItem={renderDevice}
+        keyExtractor={item => item.id}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyComponent}
+        style={styles.list}
+        contentContainerStyle={devices.length === 0 ? styles.listContentEmpty : styles.listContent}
+      />
     </View>
   );
 };
@@ -119,13 +133,33 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({ onDeviceSelected }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  header: {
     padding: 20,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    padding: 16,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
+    color: '#333333',
   },
   scanButton: {
     backgroundColor: '#007AFF',
@@ -139,6 +173,10 @@ const styles = StyleSheet.create({
   scanButtonActive: {
     backgroundColor: '#FF3B30',
   },
+  scanButtonDisabled: {
+    backgroundColor: '#CCCCCC',
+    opacity: 0.6,
+  },
   scanButtonText: {
     color: 'white',
     fontSize: 16,
@@ -147,16 +185,23 @@ const styles = StyleSheet.create({
   spinner: {
     marginRight: 10,
   },
-  deviceList: {
-    flex: 1,
-  },
   deviceItem: {
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#FFFFFF',
     padding: 16,
-    borderRadius: 8,
-    marginBottom: 8,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginVertical: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  deviceItemDisabled: {
+    backgroundColor: '#f0f0f0',
+    opacity: 0.6,
   },
   deviceInfo: {
     flex: 1,
@@ -179,11 +224,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 60,
   },
   emptyText: {
     fontSize: 16,
-    color: '#666',
+    color: '#666666',
     textAlign: 'center',
-    paddingHorizontal: 40,
+    lineHeight: 24,
   },
 });
