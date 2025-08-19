@@ -3,6 +3,15 @@
 #include "Config.h"
 #include <ArduinoBLE.h>
 
+// Platform-specific includes
+#if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
+  #include <Arduino_LSM6DSOX.h>
+#elif defined(ARDUINO_ARCH_ESP32)
+  #include <LSM6DS3.h>
+#else
+  #include <Arduino_LSM6DSOX.h>
+#endif
+
 // External BLE functions
 extern void simpleBLEPoll();
 

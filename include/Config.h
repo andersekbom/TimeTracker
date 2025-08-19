@@ -52,6 +52,5 @@ namespace Config {
     constexpr int BLE_SETUP_COLOR[3] = {0, 0, 128}; // Dim blue
     constexpr int SUCCESS_COLOR[3] = {0, 255, 0};   // Green
 }
-}
 
 #endif // CONFIG_H
