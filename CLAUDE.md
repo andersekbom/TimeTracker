@@ -90,14 +90,29 @@ Key libraries:
 
 ## Configuration Requirements
 
-Before building, you must:
+The device supports two configuration methods:
 
-1. **Create WiFi Credentials File**: 
-   - Copy `include/WiFiCredentials.h.template` to `include/WiFiCredentials.h`
-   - Update with your WiFi network credentials
-   - Add your Toggl API token and workspace ID
-   - Customize project names for each cube orientation
-2. **Security Note**: The `WiFiCredentials.h` file is gitignored to prevent accidental credential commits
+### Option 1: BLE Configuration (Recommended)
+The device automatically enters BLE setup mode if no valid configuration is stored. Use a mobile app with BLE support (like nRF Connect) to configure:
+- WiFi credentials
+- Toggl API token
+- Workspace ID
+- Project IDs for each orientation
+
+### Option 2: File-based Configuration (For Testing)
+For development/testing purposes, create a configuration file:
+
+1. **Create Configuration File**:
+   - Copy `src/Configuration.cpp.template` to `src/Configuration.cpp`
+   - Update with your actual credentials:
+     - WiFi SSID and password
+     - Toggl API token and workspace ID
+     - Project IDs for each cube orientation
+
+2. **Security Note**: 
+   - `src/Configuration.cpp` is gitignored to prevent credential commits
+   - This file contains sensitive data - never commit it to version control
+   - Use BLE configuration for production deployment
 
 ## Key Implementation Details
 

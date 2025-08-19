@@ -1,0 +1,30 @@
+#include "Configuration.h"
+
+// WiFi Configuration - Replace with your network credentials
+const char *ssid = "YOUR_WIFI_SSID";
+const char *password = "YOUR_WIFI_PASSWORD";
+
+// Toggl API Configuration - Replace with your actual Toggl API token and workspace ID
+const char *togglApiToken = "YOUR_TOGGL_API_TOKEN";
+const int workspaceId = 0; // YOUR_WORKSPACE_ID
+
+// Project names for each orientation (for display purposes)
+const char* projectNames[6] = {
+    "Break Time",         // FACE_UP (stops timers)
+    "Face Down Project",  // FACE_DOWN  
+    "Left Side Project",  // LEFT_SIDE
+    "Right Side Project", // RIGHT_SIDE
+    "Front Edge Project", // FRONT_EDGE
+    "Back Edge Project"   // BACK_EDGE
+};
+
+// Direct Toggl project ID mapping for each orientation
+// FACE_UP = 0 (disabled, break time), others set to your actual project IDs
+const int orientationProjectIds[6] = {
+    0,          // FACE_UP - disabled (break time)
+    0,          // FACE_DOWN - set to your project ID
+    0,          // LEFT_SIDE - set to your project ID  
+    0,          // RIGHT_SIDE - set to your project ID
+    0,          // FRONT_EDGE - set to your project ID
+    0           // BACK_EDGE - set to your project ID
+};

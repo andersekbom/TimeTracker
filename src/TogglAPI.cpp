@@ -99,9 +99,16 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
 
     JsonDocument timeEntry;
     timeEntry["description"] = description;
-    timeEntry["workspace_id"] = workspaceId;
+    // Prefer runtime workspace ID if set
+    String wsIdStr = hasRuntimeConfig && runtimeWorkspaceId.length() > 0
+        ? runtimeWorkspaceId
+        : String(workspaceId);
+    long wsIdNum = wsIdStr.toInt();
+    timeEntry["workspace_id"] = wsIdNum;
 
-    int projectId = orientationProjectIds[orientationIndex];
+    int projectId = (hasRuntimeConfig && runtimeProjectIds[orientationIndex] != 0)
+        ? runtimeProjectIds[orientationIndex]
+        : orientationProjectIds[orientationIndex];
     if (projectId != 0) {
         timeEntry["project_id"] = projectId;
     }
@@ -116,7 +123,11 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
     client->beginRequest();
     client->post("/api/v9/time_entries");
     client->sendHeader("Content-Type", "application/json");
-    client->sendHeader("Authorization", "Basic " + base64Encode(String(togglApiToken) + ":api_token"));
+    // Prefer runtime token if set
+    String token = hasRuntimeConfig && runtimeToken.length() > 0
+        ? runtimeToken
+        : String(togglApiToken);
+    client->sendHeader("Authorization", "Basic " + base64Encode(token + ":api_token"));
     client->sendHeader("Content-Length", jsonString.length());
     client->beginBody();
     client->print(jsonString);
@@ -149,13 +160,18 @@ bool TogglAPI::stopCurrentTimeEntry() {
     if (currentTimeEntryId == "" || !client) return false;
 
     Serial.println("Stopping current time entry...");
-
-    String endpoint = "/api/v9/workspaces/" + String(workspaceId) + "/time_entries/" + currentTimeEntryId + "/stop";
+    String wsIdStr = hasRuntimeConfig && runtimeWorkspaceId.length() > 0
+        ? runtimeWorkspaceId
+        : String(workspaceId);
+    String endpoint = "/api/v9/workspaces/" + wsIdStr + "/time_entries/" + currentTimeEntryId + "/stop";
     
     client->beginRequest();
     client->patch(endpoint);
     client->sendHeader("Content-Type", "application/json");
-    client->sendHeader("Authorization", "Basic " + base64Encode(String(togglApiToken) + ":api_token"));
+    String token = hasRuntimeConfig && runtimeToken.length() > 0
+        ? runtimeToken
+        : String(togglApiToken);
+    client->sendHeader("Authorization", "Basic " + base64Encode(token + ":api_token"));
     client->endRequest();
 
     int statusCode = client->responseStatusCode();
@@ -174,9 +190,34 @@ bool TogglAPI::stopCurrentTimeEntry() {
 
 int TogglAPI::getProjectId(int orientationIndex) const {
     if (orientationIndex >= 0 && orientationIndex < 6) {
+        if (hasRuntimeConfig && runtimeProjectIds[orientationIndex] != 0) {
+            return runtimeProjectIds[orientationIndex];
+        }
         return orientationProjectIds[orientationIndex];
     }
     return 0;
 }
 
 // Note: setCurrentTime method removed - using millis() based timing instead
+
+void TogglAPI::setCredentials(const String& token, const String& workspaceId) {
+    runtimeToken = token;
+    runtimeWorkspaceId = workspaceId;
+    hasRuntimeConfig = true;
+}
+
+void TogglAPI::setProjectIds(const int* ids) {
+    if (ids) {
+        for (int i = 0; i < 6; i++) {
+            runtimeProjectIds[i] = ids[i];
+        }
+        hasRuntimeConfig = true;
+    }
+}
+
+void TogglAPI::clearRuntimeConfig() {
+    runtimeToken = "";
+    runtimeWorkspaceId = "";
+    for (int i = 0; i < 6; i++) runtimeProjectIds[i] = 0;
+    hasRuntimeConfig = false;
+}

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoHttpClient.h>
+#include <ArduinoBLE.h>
 
 // Platform-specific includes
 #if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
@@ -23,6 +24,19 @@
 #include "NetworkManager.h"
 #include "OrientationDetector.h"
 #include "TogglAPI.h"
+#include "ConfigStorage.h"
+#include "SystemUtils.h"
+#include "StateManager.h"
+
+// BLE configuration functions (using working SimpleBLE approach)
+extern bool simpleBLEBegin();
+extern void simpleBLEPoll();
+extern bool isConfigComplete();
+extern String getWifiSSID();
+extern String getWifiPassword();
+extern String getTogglToken();
+extern String getWorkspaceId();
+extern const int* getProjectIds();
 
 // Global objects
 LEDController ledController;
@@ -34,105 +48,50 @@ WiFiSSLClient sslClient;
 HttpClient httpClient(sslClient, Config::TOGGL_SERVER, Config::TOGGL_PORT);
 TogglAPI togglAPI(&httpClient);
 
-// IMU data
-float accelX, accelY, accelZ;
+
+// Configuration and state management
+ConfigStorage configStorage;
+StateManager stateManager(ledController, networkManager, orientationDetector, togglAPI, configStorage);
 
 void setup() {
-    Serial.begin(Config::SERIAL_BAUD);
+    // Initialize serial communication
+    SystemUtils::initializeSerial();
     
-    // Optional serial connection with timeout for standalone operation
-    unsigned long serialTimeout = millis() + 3000; // 3 second timeout
-    while (!Serial && millis() < serialTimeout) {
-        delay(100);
-    }
+    // Initialize hardware components
+    SystemUtils::initializeLED(ledController);
     
-    if (Serial) {
-        Serial.println("TimeTracker Cube Starting...");
-    }
-    
-    // Initialize LED controller
-    int ledRetries = 3;
-    while (!ledController.begin() && ledRetries > 0) {
-        ledRetries--;
-        delay(1000);
-    }
-    if (ledRetries == 0) {
-        if (Serial) Serial.println("Warning: LED controller failed to initialize");
-        // Continue with basic operation - LED failures are not critical
+    bool imuOK = SystemUtils::initializeIMU(orientationDetector);
+    if (!imuOK) {
+        SystemUtils::showError(ledController);
+        delay(Config::ERROR_DISPLAY_DELAY);
     }
     
-    // Initialize IMU
-    int imuRetries = 5;
-    while (!orientationDetector.begin() && imuRetries > 0) {
-        imuRetries--;
-        delay(2000);
-    }
-    if (imuRetries == 0) {
-        if (Serial) Serial.println("Critical: IMU failed - basic operation only");
-        ledController.showError(); // Brief error indication
-        delay(2000);
-        // Continue with limited functionality
-    }
+    // Initialize configuration and determine startup mode
+    bool hasValidConfig = SystemUtils::initializeConfiguration(configStorage, togglAPI, networkManager);
     
-    // Connect to WiFi
-    int wifiRetries = 3;
-    while (!networkManager.connectToWiFi() && wifiRetries > 0) {
-        wifiRetries--;
-        delay(5000);
+    if (!hasValidConfig) {
+        // Enter BLE setup mode
+        if (simpleBLEBegin()) {
+            stateManager.setBLEActive(true);
+            if (Serial) Serial.println("BLE setup mode activated successfully");
+        } else {
+            if (Serial) Serial.println("BLE failed to start; cannot enter setup mode");
+        }
     }
-    if (wifiRetries == 0) {
-        if (Serial) Serial.println("Warning: WiFi failed - offline mode");
-        ledController.showError(); // Brief error indication
-        delay(2000);
-        // Continue in offline mode
-    }
-    
-    // Note: NTP time sync removed - using millis() based timing for API calls
-    // Note: Using direct project ID mapping - no need to load projects from Toggl
     
     if (Serial) Serial.println("TimeTracker Cube Ready!");
 }
 
 void loop() {
-    // Check network connectivity
-    networkManager.reconnectIfNeeded();
-    
-    // Note: Periodic time updates removed - using millis() based timing
-    
-    // Read IMU data
-    if (IMU.accelerationAvailable()) {
-        IMU.readAcceleration(accelX, accelY, accelZ);
-        
-        // Determine current orientation
-        Orientation newOrientation = orientationDetector.detectOrientation(accelX, accelY, accelZ);
-        
-        // Check if orientation changed and handle debouncing
-        if (orientationDetector.hasOrientationChanged(newOrientation)) {
-            
-            // Stop current timer if running
-            if (!togglAPI.getCurrentEntryId().isEmpty()) {
-                togglAPI.stopCurrentTimeEntry();
-            }
-            
-            // Update orientation
-            orientationDetector.updateOrientation(newOrientation);
-            
-            // Update LED color for new orientation
-            ledController.updateColorForOrientation(newOrientation, Config::LED_MAX_INTENSITY);
-            
-            // Print orientation info for debugging
-            orientationDetector.printOrientation(newOrientation, accelX, accelY, accelZ);
-            
-            // Start new timer if orientation is known and not break time
-            if (newOrientation != UNKNOWN && newOrientation != FACE_UP) {
-                String description = orientationDetector.getOrientationName(newOrientation);
-                togglAPI.startTimeEntry(newOrientation, description);
-            } else if (newOrientation == FACE_UP) {
-                if (Serial) Serial.println("Break time - timer stopped, no new entry started");
-            }
+    // Handle BLE setup mode or normal operation
+    if (stateManager.isBLEActive()) {
+        // Continue in BLE mode unless configuration is complete
+        if (!stateManager.handleBLEMode()) {
+            // Configuration complete, exit BLE mode
+            return;
         }
+    } else {
+        // Normal TimeTracker operation
+        stateManager.handleNormalOperation();
     }
-    
-    // Small delay for stability
-    delay(50);
 }

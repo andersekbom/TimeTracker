@@ -6,13 +6,20 @@ NetworkManager::NetworkManager() {
 }
 
 bool NetworkManager::connectToWiFi() {
+    if (hasLastCreds) {
+        return connectToWiFi(lastSSID, lastPassword);
+    }
+    return connectToWiFi(String(ssid), String(password));
+}
+
+bool NetworkManager::connectToWiFi(const String& ssidValue, const String& passwordValue) {
     Serial.print("Connecting to WiFi with SSID ");
-    Serial.println(ssid);
+    Serial.println(ssidValue);
 
     int connectionAttempts = 0;
     const int maxAttempts = 20; // Limit connection attempts
     
-    while (WiFi.begin(ssid, password) != WL_CONNECTED && connectionAttempts < maxAttempts) {
+    while (WiFi.begin(ssidValue.c_str(), passwordValue.c_str()) != WL_CONNECTED && connectionAttempts < maxAttempts) {
         Serial.print(".");
         flashConnectionStatus(true); // Flash while connecting
         connectionAttempts++;
@@ -28,6 +35,11 @@ bool NetworkManager::connectToWiFi() {
     Serial.print("Connected! IP address: ");
     Serial.println(WiFi.localIP());
     
+    // Remember these credentials for future reconnects
+    lastSSID = ssidValue;
+    lastPassword = passwordValue;
+    hasLastCreds = true;
+
     flashConnectionStatus(false); // Flash green to indicate success
     return true;
 }

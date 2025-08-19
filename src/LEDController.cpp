@@ -1,7 +1,7 @@
 #include "LEDController.h"
 #include "Config.h"
 
-LEDController::LEDController() : useBuiltinLED(false) {
+LEDController::LEDController() : useBuiltinLED(false), currentAnimation(IDLE), animationStartTime(0), animationStep(0), animationParam1(0), animationParam2(0) {
 }
 
 bool LEDController::begin() {
@@ -155,4 +155,148 @@ void LEDController::setRGBLED(uint8_t red, uint8_t green, uint8_t blue) {
     WiFiDrv::analogWrite(25, greenPWM); // Green
     WiFiDrv::analogWrite(27, bluePWM);  // Blue
     #endif
+}
+
+// BLE state-specific LED feedback methods (non-blocking)
+void LEDController::showBLESetupMode() {
+    if (useBuiltinLED) {
+        // Start slow pulse animation
+        currentAnimation = PULSE;
+        animationStartTime = millis();
+        animationStep = 0;
+        animationParam1 = 2000; // 2-second cycle
+        animationParam2 = 1;    // Single pulse
+    } else {
+        // Blue color for RGB LED
+        currentAnimation = IDLE;
+        setColor(0, 0, 128); // Dim blue
+    }
+}
+
+void LEDController::showBLEConnecting() {
+    if (useBuiltinLED) {
+        // Start fast pulse animation
+        currentAnimation = PULSE;
+        animationStartTime = millis();
+        animationStep = 0;
+        animationParam1 = 1000; // 1-second cycle
+        animationParam2 = 2;    // Double pulse
+    } else {
+        // Yellow color for RGB LED
+        currentAnimation = IDLE;
+        setColor(128, 128, 0); // Dim yellow
+    }
+}
+
+void LEDController::showBLEConnected() {
+    if (useBuiltinLED) {
+        // Solid on for connected
+        currentAnimation = IDLE;
+        setBuiltinLED(128); // Medium brightness solid
+    } else {
+        // Green color for RGB LED
+        currentAnimation = IDLE;
+        setColor(0, 128, 0); // Dim green
+    }
+}
+
+void LEDController::showBLEError() {
+    if (useBuiltinLED) {
+        // Start triple flash animation
+        currentAnimation = FLASH;
+        animationStartTime = millis();
+        animationStep = 0;
+        animationParam1 = 3;   // 3 flashes
+        animationParam2 = 200; // 200ms on/off time
+    } else {
+        // Red color for RGB LED (static error indication)
+        currentAnimation = IDLE;
+        setColor(128, 0, 0); // Dim red
+    }
+}
+
+// Non-blocking animation update method
+void LEDController::updateBLEAnimation() {
+    if (!useBuiltinLED || currentAnimation == IDLE) {
+        return; // No animation needed
+    }
+    
+    unsigned long elapsed = millis() - animationStartTime;
+    
+    switch (currentAnimation) {
+        case PULSE: {
+            int cycleDuration = animationParam1; // Full cycle time
+            int cyclePosition = elapsed % cycleDuration;
+            
+            // Simple sine-wave approximation for smooth pulse
+            if (cyclePosition < cycleDuration / 2) {
+                // Fade in
+                int brightness = (cyclePosition * 128) / (cycleDuration / 2);
+                setBuiltinLED(brightness);
+            } else {
+                // Fade out
+                int brightness = 128 - ((cyclePosition - cycleDuration / 2) * 128) / (cycleDuration / 2);
+                setBuiltinLED(brightness);
+            }
+            break;
+        }
+        
+        case FLASH: {
+            int flashDuration = animationParam2; // Time for one flash (on+off)
+            int totalFlashes = animationParam1;
+            int currentFlash = elapsed / (flashDuration * 2); // Each flash is on+off
+            
+            if (currentFlash >= totalFlashes) {
+                // Animation complete
+                setBuiltinLED(0);
+                currentAnimation = IDLE;
+            } else {
+                // Determine if we're in on or off phase of current flash
+                int flashPhase = elapsed % (flashDuration * 2);
+                if (flashPhase < flashDuration) {
+                    setBuiltinLED(255); // On
+                } else {
+                    setBuiltinLED(0);   // Off
+                }
+            }
+            break;
+        }
+        
+        default:
+            currentAnimation = IDLE;
+            break;
+    }
+}
+
+// Helper methods for single LED patterns (kept for compatibility)
+void LEDController::pulseBuiltinLED(int duration, int pulseCount) {
+    for (int pulse = 0; pulse < pulseCount; pulse++) {
+        // Fade in
+        for (int brightness = 0; brightness <= 128; brightness += 8) {
+            setBuiltinLED(brightness);
+            delay(duration / (16 * pulseCount)); // Smooth fade timing
+        }
+        // Fade out  
+        for (int brightness = 128; brightness >= 0; brightness -= 8) {
+            setBuiltinLED(brightness);
+            delay(duration / (16 * pulseCount)); // Smooth fade timing
+        }
+        
+        if (pulse < pulseCount - 1) {
+            delay(200); // Brief pause between pulses
+        }
+    }
+}
+
+void LEDController::flashBuiltinLED(int flashCount, int onTime, int offTime) {
+    for (int flash = 0; flash < flashCount; flash++) {
+        setBuiltinLED(255); // Full brightness
+        delay(onTime);
+        setBuiltinLED(0);   // Off
+        
+        if (flash < flashCount - 1) {
+            delay(offTime); // Pause between flashes
+        }
+    }
+    delay(300); // Final pause after pattern
 }
