@@ -98,10 +98,10 @@ namespace SystemUtils {
         if (tempNetworkManager.connectToWiFi(getWifiSSID(), getWifiPassword())) {
             if (Serial) Serial.println("WiFi connected! Saving configuration...");
             
-            // Use received workspace ID if available, otherwise use default
+            // Use received workspace ID if available, otherwise use placeholder
             String workspaceId = getWorkspaceId();
             if (workspaceId.length() == 0) {
-                workspaceId = "123456"; // Default workspace ID
+                workspaceId = "0"; // Placeholder workspace ID
             }
             
             // Use received project IDs if available, otherwise use defaults
