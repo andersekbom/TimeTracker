@@ -4,143 +4,84 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a PlatformIO-based Arduino project called "TimeTracker" - an IoT device that automatically tracks time using a Toggl API integration. The project is designed for Arduino Nano boards (specifically Nano RP2040 Connect and Nano 33 IoT) that act as a physical "cube timer" - different orientations of the device correspond to different work projects and automatically start/stop time tracking.
+TimeTracker is a wireless IoT cube that automatically tracks time using Toggl API integration. The device detects physical orientation changes and switches between work projects accordingly. Configuration is performed wirelessly via a mobile app using Bluetooth Low Energy.
 
-### Hardware Architecture
-
-- **Target Boards**: Arduino Nano RP2040 Connect (primary) and Nano 33 IoT (secondary)
-- **Sensors**: LSM6DSOX (RP2040) or LSM6DS3 (33 IoT) IMU for orientation detection
-- **Connectivity**: WiFiNINA for network connectivity
-- **Visual Feedback**: RGB LED (RP2040) with color-coded orientation states, or built-in LED (33 IoT) with blink pattern indicators
+### Hardware
+- **Arduino Nano RP2040 Connect** (primary) or **Nano 33 IoT** (secondary)
+- **IMU**: LSM6DSOX/LSM6DS3 for orientation detection
+- **Connectivity**: WiFiNINA + ArduinoBLE
+- **Feedback**: RGB LED (RP2040) or blink patterns (33 IoT)
 
 ### Software Architecture
+- **StateManager**: BLE setup mode and normal operation coordination
+- **SystemUtils**: Hardware initialization and system configuration
+- **OrientationDetector**: IMU-based orientation sensing with debouncing
+- **TogglAPI**: RESTful API integration with runtime configuration
+- **BLEConfigService**: Wireless device setup via mobile app
+- **LEDController**: Visual status feedback system
+- **Config**: Centralized constants and configuration
 
-The application is organized into modular components:
+## Development Commands
 
-1. **OrientationDetector** (`src/OrientationDetector.cpp`): IMU-based cube orientation detection with debouncing
-2. **TogglAPI** (`src/TogglAPI.cpp`): Complete Toggl API integration for time tracking
-3. **NetworkManager** (`src/NetworkManager.cpp`): WiFi connectivity and NTP time synchronization
-4. **LEDController** (`src/LEDController.cpp`): Hardware-agnostic LED control with visual feedback
-5. **Config** (`include/Config.h`): Centralized configuration constants
-6. **Main Application** (`src/main.cpp`): Clean orchestration of all modules
-
-## Common Development Commands
-
-### Building and Uploading
+### Arduino Firmware
 ```bash
-# Build the project for Nano RP2040 Connect (default environment)
-pio run -e nanorp2040connect
+# Build for RP2040 Connect (primary platform)
+/home/anders/.platformio/penv/bin/pio run -e nanorp2040connect
 
 # Build for Nano 33 IoT
-pio run -e nano_33_iot
+/home/anders/.platformio/penv/bin/pio run -e nano_33_iot
 
-# Upload to device (will auto-detect connected board)
-pio run --target upload
+# Upload and monitor
+/home/anders/.platformio/penv/bin/pio run --target upload -e nanorp2040connect
+/home/anders/.platformio/penv/bin/pio device monitor
 
-# Build and upload in one command
-pio run --target upload -e nanorp2040connect
+# Clean build artifacts
+/home/anders/.platformio/penv/bin/pio run --target clean
 ```
 
-### Testing
+### Mobile App (React Native/Expo)
 ```bash
-# Run all tests
-pio test
+cd TimeTrackerConfigApp
 
-# Run specific test
-pio test -e nanorp2040connect
+# Development
+npm install
+npx expo start --dev-client --lan
+
+# Production build
+eas build --platform android --profile production
 ```
 
-### Monitoring and Debugging
-```bash
-# Open serial monitor (115200 baud rate)
-pio device monitor
+## Configuration
 
-# Monitor with specific baud rate
-pio device monitor -b 115200
+### Device Setup (BLE Wireless - Recommended)
+1. Fresh device automatically enters BLE setup mode (blue LED)
+2. Use TimeTracker Config mobile app to connect and configure:
+   - WiFi credentials
+   - Toggl API token and workspace ID
+   - Project IDs for each cube orientation
+3. Configuration persists across power cycles
 
-# List connected devices
-pio device list
-```
+### Manual Setup (Development Only)
+Copy `src/Configuration.cpp.template` to `src/Configuration.cpp` and add credentials directly. This file is gitignored for security.
 
-### Project Management
-```bash
-# Update project dependencies
-pio pkg update
+## System Behavior
 
-# Install new library dependency
-pio pkg install "library-name"
+### Orientation Mapping
+- **Face Up**: Break time (stops current timer)
+- **Face Down**: Project 1 (red LED/1 blink)
+- **Left Side**: Project 2 (blue LED/2 blinks)
+- **Right Side**: Project 3 (yellow LED/3 blinks)
+- **Front Edge**: Project 4 (purple LED/4 blinks)
+- **Back Edge**: Project 5 (cyan LED/5 blinks)
 
-# Clean build files
-pio run --target clean
-```
+### Operation Modes
+- **BLE Setup Mode**: Blue LED - device awaiting configuration
+- **Normal Operation**: Color/pattern indicates current project
+- **Error State**: Red flashing - connection or initialization issues
 
-## Project Configuration
-
-The project supports two hardware targets defined in `platformio.ini`:
-
-- **nanorp2040connect**: Uses LSM6DSOX IMU and full RGB LED support
-- **nano_33_iot**: Uses LSM6DS3 IMU with built-in LED only
-
-Key libraries:
-- WiFiNINA for network connectivity
-- ArduinoHttpClient for Toggl API communication
-- ArduinoJson for JSON parsing/serialization
-- NTPClient for time synchronization
-- Arduino_LSM6DSOX/LSM6DS3 for IMU functionality
-
-## Configuration Requirements
-
-The device supports two configuration methods:
-
-### Option 1: BLE Configuration (Recommended)
-The device automatically enters BLE setup mode if no valid configuration is stored. Use a mobile app with BLE support (like nRF Connect) to configure:
-- WiFi credentials
-- Toggl API token
-- Workspace ID
-- Project IDs for each orientation
-
-### Option 2: File-based Configuration (For Testing)
-For development/testing purposes, create a configuration file:
-
-1. **Create Configuration File**:
-   - Copy `src/Configuration.cpp.template` to `src/Configuration.cpp`
-   - Update with your actual credentials:
-     - WiFi SSID and password
-     - Toggl API token and workspace ID
-     - Project IDs for each cube orientation
-
-2. **Security Note**: 
-   - `src/Configuration.cpp` is gitignored to prevent credential commits
-   - This file contains sensitive data - never commit it to version control
-   - Use BLE configuration for production deployment
-
-## Key Implementation Details
-
-- **Orientation Detection**: Uses accelerometer thresholds (±0.75g) to determine cube face
-- **Debouncing**: 5-second debounce timer prevents rapid orientation changes
-- **LED Feedback**: 
-  - **RP2040**: Each orientation has a unique color (Green=Up, Red=Down, Blue=Left, Yellow=Right, Purple=Front, Cyan=Back)
-  - **33 IoT**: Each orientation has a unique blink pattern (1=Up, 2=Down, 3=Left, 4=Right, 5=Front, 6=Back)
-- **Break Time Mode**: Back edge (6 blinks) stops time tracking without starting new entries
-- **API Integration**: RESTful HTTP calls to Toggl API v9 for time entry management
-- **Simple Timing**: Uses millis()-based timestamps for relative timing without NTP dependency
-- **Error Handling**: Visual LED feedback for connection issues and initialization errors
-
-## Development Notes
-
-- The project includes WiFi credentials in a separate header file - ensure this is properly gitignored in production
-- Serial output at 115200 baud provides extensive debugging information
-- LED behavior differs between board types: RP2040 uses RGB colors, 33 IoT uses blink patterns
-- The blink pattern system allows clear orientation identification even with a single-color LED
-- The orientation mapping can be customized by modifying the `getOrientationDescription()` function
-
-## Standalone Operation
-
-The device is designed for standalone operation from a 5V USB power bank:
-
-- **No Serial Dependency**: 3-second timeout for serial connection, continues without it
-- **Graceful Degradation**: Retries failed initializations, continues with reduced functionality if needed
-- **Network Resilience**: WiFi connection attempts are limited, operates in offline mode if needed
-- **Power Bank Compatible**: Works with standard 5V USB power banks
-- **Error Recovery**: Non-blocking error handling prevents infinite loops
-- **Runtime Reliability**: Device continues operating even with component failures
+### Key Features
+- **5-second debounce** prevents rapid orientation changes
+- **Automatic fallback** to BLE setup if WiFi fails
+- **Persistent storage** maintains configuration across power cycles
+- **Standalone operation** from USB power bank (no serial dependency)
+- **Visual feedback** for all system states

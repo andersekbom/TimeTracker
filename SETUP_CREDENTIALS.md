@@ -1,20 +1,25 @@
-# Setting Up Credentials for Development
+# Device Configuration Options
 
-For testing and development purposes, you can use file-based configuration instead of BLE setup.
+## Recommended: Wireless BLE Configuration
 
-## Quick Setup
+**Use the TimeTracker Config mobile app for wireless setup:**
 
-1. **Copy the template file:**
-   ```bash
-   cp src/Configuration.cpp.template src/Configuration.cpp
-   ```
+1. **Power on device** - enters BLE setup mode automatically (blue LED)
+2. **Install mobile app** - Download APK from EAS Build or build from source
+3. **Connect via app** - Scan for "TimeTracker-XXXX" devices
+4. **Configure wirelessly:**
+   - WiFi network and password
+   - Toggl API token and workspace ID  
+   - Project IDs for each cube orientation
+5. **Complete setup** - Device saves configuration and starts normal operation
 
-2. **Edit `src/Configuration.cpp` with your actual credentials:**
-   - Replace `YOUR_WIFI_SSID` with your WiFi network name
-   - Replace `YOUR_WIFI_PASSWORD` with your WiFi password
-   - Replace `YOUR_TOGGL_API_TOKEN` with your Toggl API token
-   - Replace `YOUR_WORKSPACE_ID` with your Toggl workspace ID
-   - Update the `orientationProjectIds` array with your actual Toggl project IDs
+## Alternative: Manual File Configuration (Development Only)
+
+For development and testing, you can bypass BLE setup:
+
+1. **Copy template:** `cp src/Configuration.cpp.template src/Configuration.cpp`
+2. **Edit credentials** in the new file with your actual values
+3. **Rebuild and upload** firmware with embedded credentials
 
 ## Getting Toggl Credentials
 
