@@ -17,6 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.timetracker.configapp",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to configure TimeTracker devices.",
         "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to configure TimeTracker devices."
