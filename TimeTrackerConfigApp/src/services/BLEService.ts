@@ -194,18 +194,24 @@ export class TimeTrackerBLEService {
       );
 
       // Send Toggl Token
+      console.log('Sending Toggl token, length:', config.toggl.apiToken.length, 'characters');
+      const base64Token = this.stringToBase64(config.toggl.apiToken);
+      console.log('Base64 encoded token length:', base64Token.length, 'characters');
       await this.device.writeCharacteristicWithResponseForService(
         TIMETRACKER_SERVICE_UUID,
         BLE_CHARACTERISTICS.TOGGL_TOKEN,
-        this.stringToBase64(config.toggl.apiToken)
+        base64Token
       );
+      console.log('Toggl token sent successfully');
 
       // Send Workspace ID
+      console.log('Sending workspace ID:', config.toggl.workspaceId);
       await this.device.writeCharacteristicWithResponseForService(
         TIMETRACKER_SERVICE_UUID,
         BLE_CHARACTERISTICS.WORKSPACE_ID,
         this.stringToBase64(config.toggl.workspaceId)
       );
+      console.log('Workspace ID sent successfully');
 
       // Send Project IDs (6 integers as 24-byte array)
       const projectIds = [
@@ -217,14 +223,88 @@ export class TimeTrackerBLEService {
         config.projects.backEdge,
       ];
       
+      console.log('Sending project IDs:', projectIds);
       await this.device.writeCharacteristicWithResponseForService(
         TIMETRACKER_SERVICE_UUID,
         BLE_CHARACTERISTICS.PROJECT_IDS,
         this.projectIdsToBase64(projectIds)
       );
+      console.log('Project IDs sent successfully');
 
     } catch (error) {
       throw new Error(`Failed to send configuration: ${error}`);
+    }
+  }
+
+  // Read current configuration from device
+  async readConfiguration(): Promise<TimeTrackerConfiguration | null> {
+    if (!this.device) {
+      throw new Error('No device connected');
+    }
+
+    try {
+      // Read WiFi SSID
+      const wifiSSIDChar = await this.device.readCharacteristicForService(
+        TIMETRACKER_SERVICE_UUID,
+        BLE_CHARACTERISTICS.WIFI_SSID
+      );
+
+      // Read WiFi Password
+      const wifiPasswordChar = await this.device.readCharacteristicForService(
+        TIMETRACKER_SERVICE_UUID,
+        BLE_CHARACTERISTICS.WIFI_PASSWORD
+      );
+
+      // Read Toggl Token
+      const togglTokenChar = await this.device.readCharacteristicForService(
+        TIMETRACKER_SERVICE_UUID,
+        BLE_CHARACTERISTICS.TOGGL_TOKEN
+      );
+
+      // Read Workspace ID
+      const workspaceIdChar = await this.device.readCharacteristicForService(
+        TIMETRACKER_SERVICE_UUID,
+        BLE_CHARACTERISTICS.WORKSPACE_ID
+      );
+
+      // Read Project IDs
+      const projectIdsChar = await this.device.readCharacteristicForService(
+        TIMETRACKER_SERVICE_UUID,
+        BLE_CHARACTERISTICS.PROJECT_IDS
+      );
+
+      if (!wifiSSIDChar?.value || !wifiPasswordChar?.value || !togglTokenChar?.value || 
+          !workspaceIdChar?.value || !projectIdsChar?.value) {
+        return null; // No configuration found
+      }
+
+      // Parse the data
+      const wifiSSID = this.base64ToString(wifiSSIDChar.value);
+      const wifiPassword = this.base64ToString(wifiPasswordChar.value);
+      const togglToken = this.base64ToString(togglTokenChar.value);
+      const workspaceId = this.base64ToString(workspaceIdChar.value);
+      const projectIds = this.base64ToProjectIds(projectIdsChar.value);
+
+      return {
+        wifi: {
+          ssid: wifiSSID,
+          password: wifiPassword,
+        },
+        toggl: {
+          apiToken: togglToken,
+          workspaceId: workspaceId,
+        },
+        projects: {
+          faceDown: projectIds[1] || 0,
+          leftSide: projectIds[2] || 0,
+          rightSide: projectIds[3] || 0,
+          frontEdge: projectIds[4] || 0,
+          backEdge: projectIds[5] || 0,
+        },
+      };
+    } catch (error) {
+      console.warn('Failed to read configuration:', error);
+      return null; // Return null if reading fails (device might not have config yet)
     }
   }
 
@@ -269,6 +349,15 @@ export class TimeTrackerBLEService {
       buffer.writeInt32LE(projectIds[i] || 0, i * 4);
     }
     return buffer.toString('base64');
+  }
+
+  private base64ToProjectIds(base64: string): number[] {
+    const buffer = Buffer.from(base64, 'base64');
+    const projectIds: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      projectIds.push(buffer.readInt32LE(i * 4));
+    }
+    return projectIds;
   }
 
   // Cleanup (but don't actually destroy singleton)

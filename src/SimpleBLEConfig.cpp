@@ -71,7 +71,7 @@ void onWifiPasswordWritten(BLEDevice central, BLECharacteristic characteristic) 
 
 void onTogglTokenWritten(BLEDevice central, BLECharacteristic characteristic) {
     int length = characteristic.valueLength();
-    if (length > 0 && length < 128) {
+    if (length > 0 && length < 256) {
         const uint8_t* data = characteristic.value();
         receivedToken = "";
         for (int i = 0; i < length; i++) {
@@ -168,7 +168,7 @@ bool simpleBLEBegin() {
     configService = new BLEService(TIMETRACKER_SERVICE_UUID);
     wifiSSIDChar = new BLEStringCharacteristic(WIFI_SSID_CHAR_UUID, BLEWrite, 64);
     wifiPasswordChar = new BLEStringCharacteristic(WIFI_PASSWORD_CHAR_UUID, BLEWrite, 64);
-    togglTokenChar = new BLEStringCharacteristic(TOGGL_TOKEN_CHAR_UUID, BLEWrite, 128);
+    togglTokenChar = new BLEStringCharacteristic(TOGGL_TOKEN_CHAR_UUID, BLEWrite, 256);
     workspaceIdChar = new BLEStringCharacteristic(WORKSPACE_ID_CHAR_UUID, BLEWrite, 16);
     projectIdsChar = new BLECharacteristic(PROJECT_IDS_CHAR_UUID, BLEWrite, 24); // 6 integers * 4 bytes
     statusChar = new BLEStringCharacteristic(STATUS_CHAR_UUID, BLERead | BLENotify, 32);

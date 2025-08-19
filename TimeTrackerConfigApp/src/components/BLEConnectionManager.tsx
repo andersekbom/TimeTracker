@@ -15,13 +15,17 @@ interface BLEConnectionManagerProps {
   onConnected: (deviceName: string) => void;
   onDisconnected: () => void;
   onError: (error: string) => void;
+  onStartConfiguration: () => void;
+  isConnected: boolean;
 }
 
 export const BLEConnectionManager: React.FC<BLEConnectionManagerProps> = ({
   selectedDevice,
   onConnected,
   onDisconnected,
-  onError
+  onError,
+  onStartConfiguration,
+  isConnected: propIsConnected
 }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -140,12 +144,20 @@ export const BLEConnectionManager: React.FC<BLEConnectionManagerProps> = ({
             )}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={[styles.button, styles.disconnectButton]}
-            onPress={handleDisconnect}
-          >
-            <Text style={styles.buttonText}>Disconnect</Text>
-          </TouchableOpacity>
+          <View style={styles.connectedButtons}>
+            <TouchableOpacity
+              style={[styles.button, styles.configureButton]}
+              onPress={onStartConfiguration}
+            >
+              <Text style={styles.buttonText}>Configure</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.disconnectButton]}
+              onPress={handleDisconnect}
+            >
+              <Text style={styles.buttonText}>Disconnect</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </View>
@@ -210,8 +222,15 @@ const styles = StyleSheet.create({
   connectButton: {
     backgroundColor: '#2196F3',
   },
+  configureButton: {
+    backgroundColor: '#4CAF50',
+  },
   disconnectButton: {
     backgroundColor: '#F44336',
+  },
+  connectedButtons: {
+    flexDirection: 'row',
+    gap: 12,
   },
   buttonDisabled: {
     backgroundColor: '#CCCCCC',

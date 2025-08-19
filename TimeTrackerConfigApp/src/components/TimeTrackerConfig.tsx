@@ -47,8 +47,9 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
   });
 
   const [isSending, setIsSending] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [showQRScanner, setShowQRScanner] = useState(false);
-  const [qrScanField, setQrScanField] = useState<'wifi-password' | 'toggl-token' | 'workspace-id' | 'project-ids' | null>(null);
+  const [qrScanField, setQrScanField] = useState<'wifi-password' | 'toggl-token' | 'workspace-id' | 'project-ids' | 'face-down' | 'left-side' | 'right-side' | 'front-edge' | 'back-edge' | null>(null);
   const [showWiFiPicker, setShowWiFiPicker] = useState(false);
   const [bleService] = useState(() => TimeTrackerBLEService.getInstance());
 
@@ -75,6 +76,35 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
       bleService.removeConnectionStateCallback(handleConnectionStateChange);
     };
   }, [bleService, onBack]);
+
+  // Load existing configuration when component mounts
+  useEffect(() => {
+    const loadExistingConfiguration = async () => {
+      setIsLoading(true);
+      try {
+        const existingConfig = await bleService.readConfiguration();
+        if (existingConfig) {
+          // Populate the form fields with existing configuration
+          setWifiSSID(existingConfig.wifi.ssid);
+          setWifiPassword(existingConfig.wifi.password);
+          setTogglToken(existingConfig.toggl.apiToken);
+          setWorkspaceId(existingConfig.toggl.workspaceId);
+          setProjectIds(existingConfig.projects);
+          
+          console.log('Loaded existing configuration:', existingConfig);
+        } else {
+          console.log('No existing configuration found on device');
+        }
+      } catch (error) {
+        console.warn('Failed to load existing configuration:', error);
+        // Don't show error to user, just continue with empty form
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadExistingConfiguration();
+  }, [bleService]);
 
   const validateConfiguration = (): string | null => {
     if (!wifiSSID.trim()) return 'WiFi SSID is required';
@@ -146,7 +176,7 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
     }));
   };
 
-  const handleQRScanRequest = (field: 'wifi-password' | 'toggl-token' | 'workspace-id' | 'project-ids') => {
+  const handleQRScanRequest = (field: 'wifi-password' | 'toggl-token' | 'workspace-id' | 'project-ids' | 'face-down' | 'left-side' | 'right-side' | 'front-edge' | 'back-edge') => {
     setQrScanField(field);
     setShowQRScanner(true);
   };
@@ -169,6 +199,46 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
         } else {
           setWorkspaceId(data.trim());
           Alert.alert('Success', 'Workspace ID scanned successfully!');
+        }
+      } else if (qrScanField === 'face-down') {
+        const projectId = parseInt(data.trim());
+        if (isNaN(projectId)) {
+          Alert.alert('Error', 'Scanned data is not a valid project ID (must be a number)');
+        } else {
+          updateProjectId('faceDown', data.trim());
+          Alert.alert('Success', 'Face Down project ID scanned successfully!');
+        }
+      } else if (qrScanField === 'left-side') {
+        const projectId = parseInt(data.trim());
+        if (isNaN(projectId)) {
+          Alert.alert('Error', 'Scanned data is not a valid project ID (must be a number)');
+        } else {
+          updateProjectId('leftSide', data.trim());
+          Alert.alert('Success', 'Left Side project ID scanned successfully!');
+        }
+      } else if (qrScanField === 'right-side') {
+        const projectId = parseInt(data.trim());
+        if (isNaN(projectId)) {
+          Alert.alert('Error', 'Scanned data is not a valid project ID (must be a number)');
+        } else {
+          updateProjectId('rightSide', data.trim());
+          Alert.alert('Success', 'Right Side project ID scanned successfully!');
+        }
+      } else if (qrScanField === 'front-edge') {
+        const projectId = parseInt(data.trim());
+        if (isNaN(projectId)) {
+          Alert.alert('Error', 'Scanned data is not a valid project ID (must be a number)');
+        } else {
+          updateProjectId('frontEdge', data.trim());
+          Alert.alert('Success', 'Front Edge project ID scanned successfully!');
+        }
+      } else if (qrScanField === 'back-edge') {
+        const projectId = parseInt(data.trim());
+        if (isNaN(projectId)) {
+          Alert.alert('Error', 'Scanned data is not a valid project ID (must be a number)');
+        } else {
+          updateProjectId('backEdge', data.trim());
+          Alert.alert('Success', 'Back Edge project ID scanned successfully!');
         }
       } else if (qrScanField === 'project-ids') {
         // Try to parse as JSON array or comma-separated values
@@ -215,6 +285,17 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
     setShowWiFiPicker(false);
     Alert.alert('Network Selected', `Selected: ${ssid}`);
   };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeContainer}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2196F3" />
+          <Text style={styles.loadingText}>Loading existing configuration...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeContainer}>
@@ -340,68 +421,98 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
 
           <View style={styles.orientationGrid}>
             <View style={styles.orientationItem}>
-              <Text style={styles.orientationLabel}>Face Up</Text>
-              <Text style={styles.orientationDescription}>Stop Timer</Text>
-            </View>
-
-            <View style={styles.orientationItem}>
               <Text style={styles.orientationLabel}>Face Down</Text>
-              <Text style={styles.orientationDescription}>Bottom of cube</Text>
-              <TextInput
-                style={styles.orientationInput}
-                value={projectIds.faceDown.toString()}
-                onChangeText={(value) => updateProjectId('faceDown', value)}
-                placeholder="Project ID"
-                keyboardType="numeric"
-              />
+              <View style={styles.orientationInputContainer}>
+                <TextInput
+                  style={styles.orientationInput}
+                  value={projectIds.faceDown.toString()}
+                  onChangeText={(value) => updateProjectId('faceDown', value)}
+                  placeholder="Project ID"
+                  keyboardType="numeric"
+                />
+                <TouchableOpacity
+                  style={styles.orientationScanButton}
+                  onPress={() => handleQRScanRequest('face-down')}
+                >
+                  <Text style={styles.orientationScanButtonText}>📱</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.orientationItem}>
               <Text style={styles.orientationLabel}>Left Side</Text>
-              <Text style={styles.orientationDescription}>Left edge down</Text>
-              <TextInput
-                style={styles.orientationInput}
-                value={projectIds.leftSide.toString()}
-                onChangeText={(value) => updateProjectId('leftSide', value)}
-                placeholder="Project ID"
-                keyboardType="numeric"
-              />
+              <View style={styles.orientationInputContainer}>
+                <TextInput
+                  style={styles.orientationInput}
+                  value={projectIds.leftSide.toString()}
+                  onChangeText={(value) => updateProjectId('leftSide', value)}
+                  placeholder="Project ID"
+                  keyboardType="numeric"
+                />
+                <TouchableOpacity
+                  style={styles.orientationScanButton}
+                  onPress={() => handleQRScanRequest('left-side')}
+                >
+                  <Text style={styles.orientationScanButtonText}>📱</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.orientationItem}>
               <Text style={styles.orientationLabel}>Right Side</Text>
-              <Text style={styles.orientationDescription}>Right edge down</Text>
-              <TextInput
-                style={styles.orientationInput}
-                value={projectIds.rightSide.toString()}
-                onChangeText={(value) => updateProjectId('rightSide', value)}
-                placeholder="Project ID"
-                keyboardType="numeric"
-              />
+              <View style={styles.orientationInputContainer}>
+                <TextInput
+                  style={styles.orientationInput}
+                  value={projectIds.rightSide.toString()}
+                  onChangeText={(value) => updateProjectId('rightSide', value)}
+                  placeholder="Project ID"
+                  keyboardType="numeric"
+                />
+                <TouchableOpacity
+                  style={styles.orientationScanButton}
+                  onPress={() => handleQRScanRequest('right-side')}
+                >
+                  <Text style={styles.orientationScanButtonText}>📱</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.orientationItem}>
               <Text style={styles.orientationLabel}>Front Edge</Text>
-              <Text style={styles.orientationDescription}>Front edge down</Text>
-              <TextInput
-                style={styles.orientationInput}
-                value={projectIds.frontEdge.toString()}
-                onChangeText={(value) => updateProjectId('frontEdge', value)}
-                placeholder="Project ID"
-                keyboardType="numeric"
-              />
+              <View style={styles.orientationInputContainer}>
+                <TextInput
+                  style={styles.orientationInput}
+                  value={projectIds.frontEdge.toString()}
+                  onChangeText={(value) => updateProjectId('frontEdge', value)}
+                  placeholder="Project ID"
+                  keyboardType="numeric"
+                />
+                <TouchableOpacity
+                  style={styles.orientationScanButton}
+                  onPress={() => handleQRScanRequest('front-edge')}
+                >
+                  <Text style={styles.orientationScanButtonText}>📱</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.orientationItem}>
               <Text style={styles.orientationLabel}>Back Edge</Text>
-              <Text style={styles.orientationDescription}>Back edge down</Text>
-              <TextInput
-                style={styles.orientationInput}
-                value={projectIds.backEdge.toString()}
-                onChangeText={(value) => updateProjectId('backEdge', value)}
-                placeholder="Project ID"
-                keyboardType="numeric"
-              />
+              <View style={styles.orientationInputContainer}>
+                <TextInput
+                  style={styles.orientationInput}
+                  value={projectIds.backEdge.toString()}
+                  onChangeText={(value) => updateProjectId('backEdge', value)}
+                  placeholder="Project ID"
+                  keyboardType="numeric"
+                />
+                <TouchableOpacity
+                  style={styles.orientationScanButton}
+                  onPress={() => handleQRScanRequest('back-edge')}
+                >
+                  <Text style={styles.orientationScanButtonText}>📱</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -414,12 +525,12 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
             disabled={isSending}
           >
             {isSending ? (
-              <View style={styles.loadingContainer}>
+              <View style={styles.buttonLoadingContainer}>
                 <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.sendButtonText}>Sending...</Text>
+                <Text style={styles.sendButtonText}>Saving...</Text>
               </View>
             ) : (
-              <Text style={styles.sendButtonText}>Send Configuration</Text>
+              <Text style={styles.sendButtonText}>Save Configuration</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -442,7 +553,12 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
             qrScanField === 'wifi-password' ? 'Scan WiFi Password' :
             qrScanField === 'toggl-token' ? 'Scan Toggl API Token' :
             qrScanField === 'workspace-id' ? 'Scan Workspace ID' :
-            qrScanField === 'project-ids' ? 'Scan Project IDs' :
+            qrScanField === 'project-ids' ? 'Scan All Project IDs' :
+            qrScanField === 'face-down' ? 'Scan Face Down Project ID' :
+            qrScanField === 'left-side' ? 'Scan Left Side Project ID' :
+            qrScanField === 'right-side' ? 'Scan Right Side Project ID' :
+            qrScanField === 'front-edge' ? 'Scan Front Edge Project ID' :
+            qrScanField === 'back-edge' ? 'Scan Back Edge Project ID' :
             'Scan QR Code'
           }
         />
@@ -617,6 +733,25 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 16,
     color: '#333333',
+    flex: 1,
+  },
+  orientationInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  orientationScanButton: {
+    backgroundColor: '#2196F3',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 32,
+  },
+  orientationScanButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
   },
   orientationInputDisabled: {
     backgroundColor: '#F0F0F0',
@@ -653,6 +788,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#333333',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  buttonLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

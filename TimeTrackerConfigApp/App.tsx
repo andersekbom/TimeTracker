@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, SafeAreaView, Alert, ScrollView } from 'react-native';
+import { StyleSheet, View, SafeAreaView, Alert } from 'react-native';
 import { BLEScanner } from './src/components/BLEScanner';
-import { BLEConnectionManager } from './src/components/BLEConnectionManager';
 import { TimeTrackerConfig } from './src/components/TimeTrackerConfig';
 import { TimeTrackerDevice } from './src/types/TimeTrackerBLE';
 
@@ -21,18 +20,10 @@ export default function App() {
   const handleConnected = (deviceName: string) => {
     setIsConnected(true);
     setConnectedDeviceName(deviceName);
-    Alert.alert(
-      'Connected Successfully',
-      `Connected to ${deviceName}`,
-      [
-        {
-          text: 'Configure Device',
-          onPress: () => {
-            setCurrentScreen('config');
-          }
-        }
-      ]
-    );
+  };
+
+  const handleStartConfiguration = () => {
+    setCurrentScreen('config');
   };
 
   const handleDisconnected = () => {
@@ -75,14 +66,13 @@ export default function App() {
         <View style={styles.scannerContainer}>
           <BLEScanner 
             onDeviceSelected={handleDeviceSelected}
-            disabled={isConnected}
-          />
-          
-          <BLEConnectionManager
-            selectedDevice={selectedDevice}
             onConnected={handleConnected}
             onDisconnected={handleDisconnected}
             onError={handleError}
+            onStartConfiguration={handleStartConfiguration}
+            selectedDevice={selectedDevice}
+            connectedDeviceName={connectedDeviceName}
+            isConnected={isConnected}
           />
         </View>
       ) : (

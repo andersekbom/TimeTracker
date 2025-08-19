@@ -13,6 +13,7 @@ interface WiFiNetwork {
   ssid: string;
   signal: number;
   security: string;
+  id: string;
 }
 
 interface WiFiNetworkPickerProps {
@@ -53,7 +54,8 @@ export const WiFiNetworkPicker: React.FC<WiFiNetworkPickerProps> = ({
       return {
         ssid: `${baseName}${suffix}`,
         signal: Math.floor(Math.random() * 50) - 80, // -30 to -80 dBm
-        security: securities[Math.floor(Math.random() * securities.length)]
+        security: securities[Math.floor(Math.random() * securities.length)],
+        id: `network_${index}_${Date.now()}_${Math.random()}` // Unique ID for each network
       };
     }).sort((a, b) => b.signal - a.signal);
   };
@@ -64,6 +66,7 @@ export const WiFiNetworkPicker: React.FC<WiFiNetworkPickerProps> = ({
     // Simulate network scanning delay
     setTimeout(() => {
       // In a real implementation, replace this with actual WiFi scanning
+      const mockNetworks = generateMockNetworks();
       const sortedNetworks = mockNetworks.sort((a, b) => b.signal - a.signal);
       setNetworks(sortedNetworks);
       setIsScanning(false);
@@ -180,7 +183,7 @@ export const WiFiNetworkPicker: React.FC<WiFiNetworkPickerProps> = ({
       <FlatList
         data={networks}
         renderItem={renderNetwork}
-        keyExtractor={item => item.ssid}
+        keyExtractor={item => item.id}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmptyComponent}
         style={styles.list}
