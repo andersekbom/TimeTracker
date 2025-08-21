@@ -35,6 +35,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{isValid: boolean; message: string} | null>(null);
+  const [isFetchingProjects, setIsFetchingProjects] = useState(false);
   
   // Use form manager for credentials
   const credentialsForm = useFormManager();
@@ -224,6 +225,40 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     }
   };
 
+  const handleFetchProjectNames = async () => {
+    if (!verificationResult?.isValid) {
+      Alert.alert(
+        'Verification Required',
+        'Please verify your API token and workspace before fetching project names.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    if (!provider) {
+      Alert.alert('Error', 'Provider not loaded');
+      return;
+    }
+    setIsFetchingProjects(true);
+    try {
+      const { workspaceId, ...creds } = credentialsForm.getValues();
+      const ids = Object.values(projectIdsForm.getValues());
+      const projects = await provider.getProjects(creds, workspaceId);
+      const messages = ids.map((id) => {
+        const pid = id?.trim();
+        if (!pid) {
+          return `No project ID entered`;
+        }
+        const found = projects.find((p) => p.id === pid);
+        return found ? `${pid}: ${found.name}` : `No project found for ID ${pid}`;
+      });
+      Alert.alert('Project Names', messages.join('\n'));
+    } catch (err: any) {
+      ErrorHandler.showAlert(err.message || 'Failed to fetch project names', 'Error');
+    } finally {
+      setIsFetchingProjects(false);
+    }
+  };
+
   const orientations = DEFAULT_VALUES.PROJECT_ORIENTATIONS;
 
   return (
@@ -313,6 +348,19 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
             />
           </View>
         ))}
+
+        {/* Fetch project names for entered IDs */}
+        <TouchableOpacity
+          style={[styles.scanAllButton, isFetchingProjects && styles.saveButtonDisabled]}
+          onPress={handleFetchProjectNames}
+          disabled={isFetchingProjects}
+        >
+          {isFetchingProjects ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.scanAllButtonText}>Fetch Project Names</Text>
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity 
           style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} 
