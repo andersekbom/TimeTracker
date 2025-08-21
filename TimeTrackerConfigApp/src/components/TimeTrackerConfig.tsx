@@ -18,7 +18,11 @@ import { QRCodeScanner } from './QRCodeScanner';
 import { WiFiNetworkPicker } from './WiFiNetworkPicker';
 import { InputWithScan } from './ui/InputWithScan';
 import { ProjectIdInput } from './ui/ProjectIdInput';
+import { providerStorage } from '../services/ProviderStorage';
+import { providerRegistry } from '../services/ProviderRegistry';
+import { ProviderConfiguration } from '../types/TimeTrackingProvider';
 import { validateConfiguration, buildConfiguration } from '../utils/configValidation';
+import { validateTogglCredentials } from '../utils/togglValidation';
 import { handleQRScanResult, QRScanField } from '../utils/qrScanHandlers';
 
 interface TimeTrackerConfigProps {
@@ -33,12 +37,16 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
   onBack,
 }) => {
   // WiFi Configuration
-  const [wifiSSID, setWifiSSID] = useState('');
-  const [wifiPassword, setWifiPassword] = useState('');
+  const [wifiSSID, setWifiSSID] = useState('youmoni-guest');
+  const [wifiPassword, setWifiPassword] = useState('IoT99Rul3s.');
 
-  // Toggl Configuration
+  // Provider Configuration from Setup
+  const [providerConfig, setProviderConfig] = useState<ProviderConfiguration | null>(null);
   const [togglToken, setTogglToken] = useState('');
   const [workspaceId, setWorkspaceId] = useState('');
+  const [testingToggl, setTestingToggl] = useState(false);
+  const [togglValid, setTogglValid] = useState<boolean | null>(null);
+  const [hasProviderSetup, setHasProviderSetup] = useState(false);
 
   // Project IDs for each orientation
   const [projectIds, setProjectIds] = useState({
@@ -80,33 +88,65 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
     };
   }, [bleService, onBack]);
 
-  // Load existing configuration when component mounts
+  // Load provider configuration and existing device configuration
   useEffect(() => {
-    const loadExistingConfiguration = async () => {
+    const loadConfigurations = async () => {
       setIsLoading(true);
       try {
+        // First, load provider configuration from Setup
+        const storedProviderConfig = await providerStorage.loadConfiguration();
+        if (storedProviderConfig) {
+          setProviderConfig(storedProviderConfig);
+          setHasProviderSetup(true);
+          
+          // Use provider configuration to pre-fill Toggl fields
+          const provider = providerRegistry.getProvider(storedProviderConfig.providerId);
+          if (provider) {
+            const deviceConfig = provider.buildDeviceConfiguration(storedProviderConfig);
+            if (deviceConfig.toggl) {
+              setTogglToken(deviceConfig.toggl.apiToken || '');
+              setWorkspaceId(String(deviceConfig.toggl.workspaceId || ''));
+            }
+            if (deviceConfig.projects) {
+              setProjectIds({
+                faceDown: deviceConfig.projects.faceDown || 0,
+                leftSide: deviceConfig.projects.leftSide || 0,
+                rightSide: deviceConfig.projects.rightSide || 0,
+                frontEdge: deviceConfig.projects.frontEdge || 0,
+                backEdge: deviceConfig.projects.backEdge || 0,
+              });
+            }
+          }
+          console.log('Loaded provider configuration from Setup:', storedProviderConfig);
+        } else {
+          console.log('No provider configuration found - user needs to run Setup first');
+        }
+
+        // Then try to load existing device configuration (mainly for WiFi settings)
         const existingConfig = await bleService.readConfiguration();
         if (existingConfig) {
-          // Populate the form fields with existing configuration
           setWifiSSID(existingConfig.wifi.ssid);
           setWifiPassword(existingConfig.wifi.password);
-          setTogglToken(existingConfig.toggl.apiToken);
-          setWorkspaceId(existingConfig.toggl.workspaceId);
-          setProjectIds(existingConfig.projects);
           
-          console.log('Loaded existing configuration:', existingConfig);
+          // Only use device Toggl config if no provider setup exists
+          if (!storedProviderConfig) {
+            setTogglToken(existingConfig.toggl.apiToken);
+            setWorkspaceId(existingConfig.toggl.workspaceId);
+            setProjectIds(existingConfig.projects);
+          }
+          
+          console.log('Loaded existing device configuration:', existingConfig);
         } else {
-          console.log('No existing configuration found on device');
+          console.log('No existing device configuration found');
         }
       } catch (error) {
-        console.warn('Failed to load existing configuration:', error);
-        // Don't show error to user, just continue with empty form
+        console.warn('Failed to load configurations:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadExistingConfiguration();
+    loadConfigurations();
   }, [bleService]);
 
 
@@ -205,6 +245,29 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
             <Text style={styles.title}>Configure {deviceName}</Text>
           </View>
 
+          {/* Provider Setup Warning */}
+          {!hasProviderSetup && (
+            <View style={styles.warningSection}>
+              <Text style={styles.warningTitle}>⚠️ Setup Required</Text>
+              <Text style={styles.warningText}>
+                No time tracking service has been configured. Please go back and use the "Setup" button to configure your time tracking provider (Toggl, etc.) first.
+              </Text>
+              <Text style={styles.warningSubtext}>
+                You can still configure WiFi settings and send basic configuration to the device.
+              </Text>
+            </View>
+          )}
+
+          {/* Provider Configuration Info */}
+          {hasProviderSetup && providerConfig && (
+            <View style={styles.infoSection}>
+              <Text style={styles.infoTitle}>✅ Time Tracking Setup Complete</Text>
+              <Text style={styles.infoText}>
+                Using {providerRegistry.getProvider(providerConfig.providerId)?.name} with workspace {providerConfig.workspaceId}
+              </Text>
+            </View>
+          )}
+
         {/* WiFi Configuration */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>WiFi Configuration</Text>
@@ -240,19 +303,41 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
             value={togglToken}
             onChangeText={setTogglToken}
             placeholder="Enter Toggl API token"
-            secureTextEntry
             onScan={() => handleQRScanRequest('toggl-token')}
           />
 
-          <InputWithScan
-            label="Workspace ID"
-            required
-            value={workspaceId}
-            onChangeText={setWorkspaceId}
-            placeholder="Enter workspace ID (number)"
-            keyboardType="numeric"
-            onScan={() => handleQRScanRequest('workspace-id')}
-          />
+        <InputWithScan
+          label="Workspace ID"
+          required
+          value={workspaceId}
+          onChangeText={setWorkspaceId}
+          placeholder="Enter workspace ID (number)"
+          keyboardType="numeric"
+          onScan={() => handleQRScanRequest('workspace-id')}
+        />
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={async () => {
+            setTestingToggl(true);
+            const result = await validateTogglCredentials(togglToken, workspaceId);
+            setTestingToggl(false);
+            setTogglValid(result.isValid);
+          }}
+          disabled={testingToggl}
+        >
+          {testingToggl ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.testButtonText}>Test Toggl Credentials</Text>
+          )}
+        </TouchableOpacity>
+        {togglValid !== null && (
+          <View style={styles.validationResult}>
+            <Text style={togglValid ? styles.valid : styles.invalid}>
+              {togglValid ? '✓' : '✕'}
+            </Text>
+          </View>
+        )}
         </View>
 
         {/* Project Mapping */}
@@ -499,5 +584,74 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  testButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  testButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  validationResult: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  valid: {
+    color: 'green',
+    fontSize: 24,
+  },
+  invalid: {
+    color: 'red',
+    fontSize: 24,
+  },
+  warningSection: {
+    backgroundColor: '#FFF3CD',
+    borderColor: '#FFEAA7',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 16,
+    margin: 16,
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#856404',
+    marginBottom: 8,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#856404',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  warningSubtext: {
+    fontSize: 12,
+    color: '#856404',
+    fontStyle: 'italic',
+  },
+  infoSection: {
+    backgroundColor: '#D4EDDA',
+    borderColor: '#C3E6CB',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 16,
+    margin: 16,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#155724',
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#155724',
+    lineHeight: 20,
   },
 });

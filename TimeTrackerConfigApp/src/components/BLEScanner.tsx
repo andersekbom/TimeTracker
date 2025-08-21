@@ -17,6 +17,7 @@ interface BLEScannerProps {
   onDisconnected: () => void;
   onError: (error: string) => void;
   onStartConfiguration: () => void;
+  onSetupTimeTracking?: () => void;
   selectedDevice: TimeTrackerDevice | null;
   connectedDeviceName: string;
   isConnected: boolean;
@@ -28,6 +29,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
   onDisconnected, 
   onError, 
   onStartConfiguration, 
+  onSetupTimeTracking,
   selectedDevice, 
   connectedDeviceName, 
   isConnected 
@@ -46,6 +48,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
         onConnected(deviceName);
       } else {
         onDisconnected();
+        // Device list is preserved - no need to auto-scan since BLE device details don't change
       }
     };
 
@@ -91,10 +94,8 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
     try {
       setIsScanning(true);
       
-      // Only clear devices if not connected, otherwise keep connected device visible
-      if (!isConnected) {
-        setDevices([]);
-      }
+      // Clear existing devices to show fresh scan results
+      setDevices([]);
       
       await bleService.scanForDevices(
         (device) => {
@@ -230,19 +231,30 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
     <View style={styles.header}>
       <Text style={styles.title}>TimeTracker Devices</Text>
       
-      <TouchableOpacity
-        style={[
-          styles.scanButton, 
-          isScanning && styles.scanButtonActive
-        ]}
-        onPress={isScanning ? stopScan : startScan}
-        disabled={isScanning}
-      >
-        {isScanning && <ActivityIndicator color="white" style={styles.spinner} />}
-        <Text style={styles.scanButtonText}>
-          {isScanning ? 'Scanning...' : 'Start Scan'}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.headerActions}>
+        <TouchableOpacity
+          style={[
+            styles.scanButton, 
+            isScanning && styles.scanButtonActive
+          ]}
+          onPress={isScanning ? stopScan : startScan}
+          disabled={isScanning}
+        >
+          {isScanning && <ActivityIndicator color="white" style={styles.spinner} />}
+          <Text style={styles.scanButtonText}>
+            {isScanning ? 'Scanning...' : 'Start Scan'}
+          </Text>
+        </TouchableOpacity>
+        
+        {onSetupTimeTracking && (
+          <TouchableOpacity
+            style={styles.cogButton}
+            onPress={onSetupTimeTracking}
+          >
+            <Text style={styles.cogIcon}>⚙️</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 
@@ -300,6 +312,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#333333',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cogButton: {
+    backgroundColor: '#6C7B7F',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  cogIcon: {
+    fontSize: 20,
+  },
   scanButton: {
     backgroundColor: '#007AFF',
     padding: 16,
@@ -307,7 +336,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    flex: 1,
   },
   scanButtonActive: {
     backgroundColor: '#FF3B30',

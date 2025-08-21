@@ -12,11 +12,13 @@ export type QRScanField =
   | 'front-edge' 
   | 'back-edge';
 
+import { ProjectConfiguration } from '../types/TimeTrackerBLE';
+
 export interface QRScanHandlers {
   setWifiPassword: (value: string) => void;
   setTogglToken: (value: string) => void;
   setWorkspaceId: (value: string) => void;
-  updateProjectId: (orientation: string, value: string) => void;
+  updateProjectId: (orientation: keyof ProjectConfiguration, value: string) => void;
   setProjectIds: (ids: any) => void;
 }
 
@@ -82,8 +84,8 @@ export const handleQRScanResult = (
 
 const handleSingleProjectId = (
   data: string,
-  orientation: string,
-  updateProjectId: (orientation: string, value: string) => void,
+  orientation: keyof ProjectConfiguration,
+  updateProjectId: (orientation: keyof ProjectConfiguration, value: string) => void,
   displayName: string
 ): void => {
   const result = validateProjectId(data);

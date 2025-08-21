@@ -138,8 +138,9 @@ export class TimeTrackerBLEService {
       this.device = await this.manager.connectToDevice(deviceId);
       
       // Set up disconnect monitoring
+      const deviceName = this.device.name; // Store name before disconnect
       this.device.onDisconnected((error, device) => {
-        console.log(`Device ${device?.name} disconnected:`, error);
+        console.log(`Device ${deviceName || device?.name || 'undefined'} disconnected: ${error?.message || 'null'}`);
         this.device = null;
         this.notifyConnectionStateChange(false);
       });

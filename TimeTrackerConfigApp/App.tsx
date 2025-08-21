@@ -3,15 +3,19 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, SafeAreaView, Alert } from 'react-native';
 import { BLEScanner } from './src/components/BLEScanner';
 import { TimeTrackerConfig } from './src/components/TimeTrackerConfig';
+import { SimpleTimeTrackingSetup } from './src/components/SimpleTimeTrackingSetup';
+import { TimeTrackingProviderList } from './src/components/TimeTrackingProviderList';
 import { TimeTrackerDevice } from './src/types/TimeTrackerBLE';
 
-type AppScreen = 'scanner' | 'config';
+type AppScreen = 'scanner' | 'config' | 'providers' | 'setup';
 
 export default function App() {
   const [selectedDevice, setSelectedDevice] = useState<TimeTrackerDevice | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectedDeviceName, setConnectedDeviceName] = useState<string>('');
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('scanner');
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const handleDeviceSelected = (device: TimeTrackerDevice) => {
     setSelectedDevice(device);
@@ -58,6 +62,24 @@ export default function App() {
     setCurrentScreen('scanner');
   };
 
+  const handleSetupTimeTracking = () => {
+    setCurrentScreen('providers');
+  };
+
+  const handleProviderSelect = (providerId: string) => {
+    setSelectedProviderId(providerId);
+    setCurrentScreen('setup');
+  };
+
+  const handleSetupComplete = () => {
+    setRefreshTrigger(prev => prev + 1); // Trigger refresh of provider list
+    setCurrentScreen('providers'); // Return to provider list to see checkmark
+  };
+
+  const handleBackToProviders = () => {
+    setCurrentScreen('providers');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="auto" />
@@ -70,11 +92,23 @@ export default function App() {
             onDisconnected={handleDisconnected}
             onError={handleError}
             onStartConfiguration={handleStartConfiguration}
+            onSetupTimeTracking={handleSetupTimeTracking}
             selectedDevice={selectedDevice}
             connectedDeviceName={connectedDeviceName}
             isConnected={isConnected}
           />
         </View>
+      ) : currentScreen === 'providers' ? (
+        <TimeTrackingProviderList
+          onProviderSelect={handleProviderSelect}
+          onBack={handleBackToScanner}
+          refreshTrigger={refreshTrigger}
+        />
+      ) : currentScreen === 'setup' ? (
+        <SimpleTimeTrackingSetup
+          onComplete={handleSetupComplete}
+          onBack={handleBackToProviders}
+        />
       ) : (
         <TimeTrackerConfig
           deviceName={connectedDeviceName}
