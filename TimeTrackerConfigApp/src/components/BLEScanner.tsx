@@ -233,7 +233,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
         <View style={styles.headerActions}>
         <TouchableOpacity
           style={[
-            styles.scanButton, 
+            styles.scanButton,
             isScanning && styles.scanButtonActive
           ]}
           onPress={isScanning ? stopScan : startScan}
@@ -244,7 +244,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
             {isScanning ? 'Scanning...' : 'Start Scan'}
           </Text>
         </TouchableOpacity>
-        
+
         {onSetupTimeTracking && (
           <TouchableOpacity
             style={styles.setupButton}
@@ -313,18 +313,17 @@ const styles = StyleSheet.create({
     color: '#333333',
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    flexDirection: 'column',
+    alignItems: 'stretch',
   },
   setupButton: {
     backgroundColor: '#147500ff',
     padding: 16,
     borderRadius: 8,
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    flex: 1,
+    width: '100%',
+    marginTop: 12,
   },
   setupText: {
     color: 'white',
@@ -335,10 +334,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     padding: 16,
     borderRadius: 8,
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    flex: 3,
+    width: '100%',
   },
   scanButtonActive: {
     backgroundColor: '#FF3B30',
