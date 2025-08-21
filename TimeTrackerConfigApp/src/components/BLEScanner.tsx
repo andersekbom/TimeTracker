@@ -41,14 +41,15 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
 
   useEffect(() => {
     // Subscribe to connection state changes
-    const handleConnectionStateChange = (connected: boolean, deviceName?: string) => {
+      const handleConnectionStateChange = (connected: boolean, deviceName?: string) => {
       setConnectingDeviceId(null);
-      
+
       if (connected && deviceName) {
         onConnected(deviceName);
       } else {
         onDisconnected();
-        // Device list is preserved - no need to auto-scan since BLE device details don't change
+        // After a disconnect, restart scanning so the user can reconnect without tapping Scan
+        startScan();
       }
     };
 
@@ -113,7 +114,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
         }
       );
 
-      // Stop scanning after 30 seconds
+      // Stop scanning after 10 seconds
       setTimeout(() => {
         stopScan();
       }, 10000);
@@ -231,6 +232,18 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
     <View style={styles.header}>
       <Text style={styles.title}>Time Tracker Redux</Text>
         <View style={styles.headerActions}>
+
+        {onSetupTimeTracking && (
+          <TouchableOpacity
+            style={styles.setupButton}
+            onPress={onSetupTimeTracking}
+          >
+            <Text style={styles.setupText}>Setup</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <View style={styles.headerActions}>
+
         <TouchableOpacity
           style={[
             styles.scanButton,
@@ -245,23 +258,16 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
           </Text>
         </TouchableOpacity>
 
-        {onSetupTimeTracking && (
-          <TouchableOpacity
-            style={styles.setupButton}
-            onPress={onSetupTimeTracking}
-          >
-            <Text style={styles.setupText}>Setup</Text>
-          </TouchableOpacity>
-        )}
+
       </View>
     </View>
   );
 
   const renderEmptyComponent = () => (
     <View style={styles.emptyState}>
-      <Text style={styles.emptyText}>
-        {isScanning ? 'Looking for TimeTracker devices...' : 'No devices found. Make sure your TimeTracker is in setup mode.'}
-      </Text>
+        <Text style={styles.emptyText}>
+          {isScanning ? 'Looking for TimeTracker devices...' : 'No devices found. Make sure your TimeTracker is in setup mode.'}
+        </Text>
     </View>
   );
 
@@ -323,7 +329,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    marginTop: 12,
+    marginBottom: 12,
   },
   setupText: {
     color: 'white',
@@ -446,6 +452,11 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyText: {
+       flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 60,
     fontSize: 16,
     color: '#666666',
     textAlign: 'center',
