@@ -40,26 +40,31 @@ export class TimeTrackingProviderStorage implements ProviderStorage {
     }
   }
 
-  async clearConfiguration(): Promise<void> {
-    try {
-      await safeStorage.removeItem(STORAGE_KEY);
-      console.log('Cleared provider configuration');
-    } catch (error) {
-      console.error('Failed to clear provider configuration:', error);
-      throw new Error('Failed to clear provider configuration');
-    }
-  }
-
   async clearConfiguration(providerId?: string): Promise<void> {
     if (!providerId) {
-      // Clear single config (backward compatibility)
-      return this.clearConfiguration();
+      // Clear all configurations (backward compatibility)
+      try {
+        await safeStorage.removeItem(STORAGE_KEY);
+        await safeStorage.removeItem(MULTI_STORAGE_KEY);
+        console.log('Cleared all provider configurations');
+      } catch (error) {
+        console.error('Failed to clear provider configurations:', error);
+        throw new Error('Failed to clear provider configurations');
+      }
+      return;
     }
 
     try {
       const multiConfigs = await this.loadAllConfigurations();
       delete multiConfigs[providerId];
       await safeStorage.setItem(MULTI_STORAGE_KEY, JSON.stringify(multiConfigs));
+      
+      // If clearing the single config provider, remove it too
+      const singleConfig = await this.loadConfiguration();
+      if (singleConfig?.providerId === providerId) {
+        await safeStorage.removeItem(STORAGE_KEY);
+      }
+      
       console.log(`Cleared ${providerId} provider configuration`);
     } catch (error) {
       console.error('Failed to clear provider configuration:', error);

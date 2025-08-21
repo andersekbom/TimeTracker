@@ -1,7 +1,9 @@
 import { TimeTrackerConfiguration } from '../types/TimeTrackerBLE';
+import { ValidationService } from '../services/ValidationService';
 
 /**
- * Validation utilities for TimeTracker configuration
+ * Legacy validation utilities - now using ValidationService internally
+ * @deprecated Use ValidationService directly for new code
  */
 
 export interface ValidationResult {
@@ -16,49 +18,32 @@ export const validateConfiguration = (
   workspaceId: string,
   projectIds: { faceDown: number; leftSide: number; rightSide: number; frontEdge: number; backEdge: number }
 ): ValidationResult => {
-  if (!wifiSSID.trim()) {
-    return { isValid: false, error: 'WiFi SSID is required' };
-  }
-
-  if (!wifiPassword.trim()) {
-    return { isValid: false, error: 'WiFi password is required' };
-  }
-
-  if (!togglToken.trim()) {
-    return { isValid: false, error: 'Toggl API token is required' };
-  }
-
-  if (!workspaceId.trim()) {
-    return { isValid: false, error: 'Workspace ID is required' };
-  }
-
-  const workspaceNum = parseInt(workspaceId);
-  if (isNaN(workspaceNum)) {
-    return { isValid: false, error: 'Workspace ID must be a number' };
-  }
-
-  const hasProjects = Object.values(projectIds).some(id => id > 0);
-  if (!hasProjects) {
-    return { isValid: false, error: 'At least one project ID must be set' };
-  }
-
-  return { isValid: true };
+  return ValidationService.validateCompleteConfiguration(
+    wifiSSID,
+    wifiPassword,
+    { apiToken: togglToken },
+    workspaceId,
+    projectIds,
+    ['apiToken']
+  );
 };
 
 export const validateProjectId = (value: string): { isValid: boolean; projectId?: number; error?: string } => {
-  const projectId = parseInt(value.trim());
-  if (isNaN(projectId)) {
-    return { isValid: false, error: 'Project ID must be a number' };
-  }
-  return { isValid: true, projectId };
+  const result = ValidationService.validateProjectId(value);
+  return {
+    isValid: result.isValid,
+    projectId: result.details?.numericValue,
+    error: result.error,
+  };
 };
 
 export const validateWorkspaceId = (value: string): { isValid: boolean; workspaceId?: string; error?: string } => {
-  const workspaceNum = parseInt(value.trim());
-  if (isNaN(workspaceNum)) {
-    return { isValid: false, error: 'Workspace ID must be a number' };
-  }
-  return { isValid: true, workspaceId: value.trim() };
+  const result = ValidationService.validateWorkspaceId(value);
+  return {
+    isValid: result.isValid,
+    workspaceId: result.isValid ? value.trim() : undefined,
+    error: result.error,
+  };
 };
 
 export const buildConfiguration = (

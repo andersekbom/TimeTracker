@@ -14,7 +14,11 @@ import { providerStorage } from '../services/ProviderStorage';
 import { providerRegistry } from '../services/ProviderRegistry';
 import { QRCodeScanner } from './QRCodeScanner';
 import { InputWithScan } from './ui/InputWithScan';
-import { handleQRScanResult, QRScanField } from '../utils/qrScanHandlers';
+import { useQRScanner } from '../hooks/useQRScanner';
+import { useFormManager } from '../hooks/useFormManager';
+import { ValidationService } from '../services/ValidationService';
+import { ErrorHandler } from '../utils/errorHandler';
+import { DEFAULT_VALUES, TEST_CONFIG } from '../constants/config';
 
 interface SimpleTimeTrackingSetupProps {
   onComplete: () => void;
@@ -28,21 +32,24 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   providerId
 }) => {
   const [provider, setProvider] = useState<any>(null);
-  const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{isValid: boolean; message: string} | null>(null);
-  const [projectIds, setProjectIds] = useState({
-    faceDown: '0',
-    leftSide: '0',
-    rightSide: '0',
-    frontEdge: '0',
-    backEdge: '0',
-  });
+  
+  // Use form manager for credentials
+  const credentialsForm = useFormManager();
+  
+  // Use form manager for project IDs
+  const projectIdsForm = useFormManager(DEFAULT_VALUES.PROJECT_IDS);
 
-  // QR Scanner state
-  const [showQRScanner, setShowQRScanner] = useState(false);
-  const [qrScanField, setQrScanField] = useState<QRScanField | null>(null);
+  // Use QR scanner hook
+  const qrScanner = useQRScanner({
+    setTogglToken: (value) => credentialsForm.setValue('apiToken', value),
+    setClockifyKey: (value) => credentialsForm.setValue('apiKey', value),
+    setWorkspaceId: (value) => credentialsForm.setValue('workspaceId', value),
+    updateProjectId: (orientation, value) => projectIdsForm.setValue(orientation, value),
+    setProjectIds: (ids) => projectIdsForm.setValues(ids),
+  });
 
   // Load provider and set default values
   useEffect(() => {
@@ -50,145 +57,129 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     if (selectedProvider) {
       setProvider(selectedProvider);
       
-      // Set default testing values based on provider
-      if (providerId === 'toggl') {
-        setCredentials({ 
-          apiToken: '8512ae2df80f50ecaa5a7e0c4c96cc57',
-          workspaceId: '20181448'
+    // Load existing saved configuration (if any) before applying development defaults
+    (async () => {
+      const allConfigs = await providerStorage.loadAllConfigurations();
+      const existingConfig = allConfigs[providerId];
+      if (existingConfig) {
+        credentialsForm.setValues({
+          apiToken: existingConfig.credentials.apiToken,
+          workspaceId: existingConfig.workspaceId,
         });
-        setProjectIds({
-          faceDown: '212267804',
-          leftSide: '212267805',
-          rightSide: '212267806',
-          frontEdge: '212267807',
-          backEdge: '212267809',
-        });
-      } else if (providerId === 'clockify') {
-        setCredentials({ 
-          apiKey: 'your-clockify-api-key-here',
-          workspaceId: 'your-workspace-id-here'
-        });
-        setProjectIds({
-          faceDown: '0', // Break time
-          leftSide: 'project-id-1',
-          rightSide: 'project-id-2',
-          frontEdge: 'project-id-3',
-          backEdge: 'project-id-4',
-        });
+        projectIdsForm.setValues(existingConfig.projectIds);
+        return;
       }
+
+      // Set default testing values based on provider (only in development)
+      if (__DEV__) {
+        if (providerId === 'toggl' && TEST_CONFIG.TOGGL.API_TOKEN) {
+          credentialsForm.setValues({
+            apiToken: TEST_CONFIG.TOGGL.API_TOKEN,
+            workspaceId: TEST_CONFIG.TOGGL.WORKSPACE_ID,
+          });
+          
+          const projectIdsAsStrings = Object.fromEntries(
+            Object.entries(TEST_CONFIG.TOGGL.PROJECT_IDS).map(([key, value]) => [key, String(value)])
+          );
+          projectIdsForm.setValues(projectIdsAsStrings);
+        } else if (providerId === 'clockify' && TEST_CONFIG.CLOCKIFY.API_KEY) {
+          credentialsForm.setValues({
+            apiKey: TEST_CONFIG.CLOCKIFY.API_KEY,
+            workspaceId: TEST_CONFIG.CLOCKIFY.WORKSPACE_ID,
+          });
+          
+          const projectIdsAsStrings = Object.fromEntries(
+            Object.entries(TEST_CONFIG.CLOCKIFY.PROJECT_IDS).map(([key, value]) => [key, String(value)])
+          );
+          projectIdsForm.setValues(projectIdsAsStrings);
+        }
+      }
+    })();
     }
-  }, [providerId]);
+  }, [providerId, credentialsForm, projectIdsForm]);
 
-  // QR Scanner handlers
-  const handleQRScanRequest = (field: QRScanField) => {
-    setQrScanField(field);
-    setShowQRScanner(true);
-  };
-
-  const updateProjectId = (orientation: keyof typeof projectIds, value: string) => {
-    setProjectIds(prev => ({
-      ...prev,
-      [orientation]: value
-    }));
-  };
-
+  // QR Scanner is handled by the hook
   const onQRScanResult = (data: string) => {
-    setShowQRScanner(false);
-    
-    if (qrScanField) {
-      handleQRScanResult(data, qrScanField, {
-        setWifiPassword: () => {}, // Not used in setup
-        setTogglToken: (value) => setCredentials(prev => ({ ...prev, apiToken: value })),
-        setClockifyKey: (value) => setCredentials(prev => ({ ...prev, apiKey: value })),
-        setWorkspaceId: (value) => setCredentials(prev => ({ ...prev, workspaceId: value })),
-        updateProjectId,
-        setProjectIds,
-      }, projectIds);
-    }
+    qrScanner.processQRScanResult(data);
   };
 
   const handleVerify = async () => {
     if (!provider) {
-      Alert.alert('Error', 'Provider not loaded');
+      ErrorHandler.showAlert('Provider not loaded', 'Error');
       return;
     }
 
-    // Check if required fields are filled
+    const credentials = credentialsForm.getValues();
+    const { workspaceId, ...providerCredentials } = credentials;
+
+    // Validate required fields using ValidationService
     const configFields = provider.getConfigurationFields();
-    const requiredFields = configFields.filter((field: any) => field.required);
+    const requiredFields = configFields.filter((field: any) => field.required).map((field: any) => field.key);
     
-    for (const field of requiredFields) {
-      if (!credentials[field.key] || !credentials[field.key].trim()) {
-        Alert.alert('Missing Information', `Please enter ${field.label}`);
-        return;
-      }
+    const credentialsValidation = ValidationService.validateProviderCredentials(credentials, requiredFields);
+    if (!credentialsValidation.isValid) {
+      ErrorHandler.showAlert(credentialsValidation.error!, 'Missing Information');
+      return;
     }
 
-    if (!credentials.workspaceId?.trim()) {
-      Alert.alert('Missing Information', 'Please enter Workspace ID');
+    const workspaceValidation = ValidationService.validateWorkspaceId(workspaceId);
+    if (!workspaceValidation.isValid) {
+      ErrorHandler.showAlert(workspaceValidation.error!, 'Missing Information');
       return;
     }
 
     setIsVerifying(true);
     setVerificationResult(null);
 
-    try {
+    const result = await ErrorHandler.handleAsync(async () => {
       // Validate credentials
-      const credentialResult = await provider.validateCredentials(credentials);
+      const credentialResult = await provider.validateCredentials(providerCredentials);
       if (!credentialResult.isValid) {
-        setVerificationResult({
-          isValid: false,
-          message: `Credential validation failed: ${credentialResult.error || 'Invalid credentials'}`
-        });
-        return;
+        throw new Error(`Credential validation failed: ${credentialResult.error || 'Invalid credentials'}`);
       }
 
       // Validate workspace
-      const workspaceResult = await provider.validateWorkspace(credentials, credentials.workspaceId!);
+      const workspaceResult = await provider.validateWorkspace(providerCredentials, workspaceId);
       if (!workspaceResult.isValid) {
-        setVerificationResult({
-          isValid: false,
-          message: `Workspace validation failed: ${workspaceResult.error || 'Invalid workspace ID'}`
-        });
-        return;
+        throw new Error(`Workspace validation failed: ${workspaceResult.error || 'Invalid workspace ID'}`);
       }
 
-      // Success
+      return { credentialResult, workspaceResult };
+    }, 'verification');
+
+    setIsVerifying(false);
+
+    if (result.success) {
       setVerificationResult({
         isValid: true,
         message: `API connection verified successfully! ${provider.name} credentials and workspace are valid.`
       });
-
-    } catch (error) {
-      console.error('Verification error:', error);
+    } else {
+      const userMessage = ErrorHandler.createUserFriendlyMessage(new Error(result.error?.message || ''));
       setVerificationResult({
         isValid: false,
-        message: `Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: userMessage
       });
-    } finally {
-      setIsVerifying(false);
     }
   };
 
   const handleSave = async () => {
     if (!provider) {
-      Alert.alert('Error', 'Provider not loaded');
+      ErrorHandler.showAlert('Provider not loaded', 'Error');
       return;
     }
 
-    // Check if required fields are filled
-    const configFields = provider.getConfigurationFields();
-    const requiredFields = configFields.filter((field: any) => field.required);
-    
-    for (const field of requiredFields) {
-      if (!credentials[field.key] || !credentials[field.key].trim()) {
-        Alert.alert('Missing Information', `Please enter ${field.label}`);
-        return;
-      }
-    }
+    const credentials = credentialsForm.getValues();
+    const projectIds = projectIdsForm.getValues();
 
-    if (!credentials.workspaceId?.trim()) {
-      Alert.alert('Missing Information', 'Please enter Workspace ID');
+    // Validate all required fields
+    const { workspaceId, ...providerCredentials } = credentials;
+    const configFields = provider.getConfigurationFields();
+    const requiredFields = configFields.filter((field: any) => field.required).map((field: any) => field.key);
+    
+    const credentialsValidation = ValidationService.validateProviderCredentials(credentials, requiredFields);
+    if (!credentialsValidation.isValid) {
+      ErrorHandler.showAlert(credentialsValidation.error!, 'Missing Information');
       return;
     }
 
@@ -197,41 +188,41 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
       Alert.alert(
         'Verification Required', 
         'Please verify your connection before saving the configuration.',
-        [
-          { text: 'OK', style: 'default' }
-        ]
+        [{ text: 'OK', style: 'default' }]
       );
       return;
     }
 
     setIsSaving(true);
-    try {
-      const { workspaceId, ...providerCredentials } = credentials;
+    
+    const result = await ErrorHandler.handleAsync(async () => {
       const config: ProviderConfiguration = {
         providerId,
         credentials: providerCredentials,
-        workspaceId: workspaceId!,
-        projectIds,
+        workspaceId: workspaceId,
+        projectIds: {
+          faceDown: projectIds.faceDown || '0',
+          leftSide: projectIds.leftSide || '0',
+          rightSide: projectIds.rightSide || '0',
+          frontEdge: projectIds.frontEdge || '0',
+          backEdge: projectIds.backEdge || '0',
+        },
       };
 
       await providerStorage.saveConfiguration(config);
-      //Alert.alert('Success', 'Configuration saved successfully!');
+      return config;
+    }, 'save-configuration');
+
+    setIsSaving(false);
+
+    if (result.success) {
       onComplete();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save configuration');
-      console.error('Save error:', error);
-    } finally {
-      setIsSaving(false);
+    } else {
+      ErrorHandler.showAlert(result.error?.message || 'Failed to save configuration', 'Save Error');
     }
   };
 
-  const orientations = [
-    { key: 'faceDown', label: 'Face Down', description: '' },
-    { key: 'leftSide', label: 'Left Side', description: '' },
-    { key: 'rightSide', label: 'Right Side', description: '' },
-    { key: 'frontEdge', label: 'Front Edge', description: '' },
-    { key: 'backEdge', label: 'Back Edge', description: '' },
-  ];
+  const orientations = DEFAULT_VALUES.PROJECT_ORIENTATIONS;
 
   return (
     <View style={styles.container}>
@@ -251,12 +242,12 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
               <InputWithScan
                 key={field.key}
                 label={field.label + (field.required ? ' *' : '')}
-                value={credentials[field.key] || ''}
-                onChangeText={(value) => setCredentials(prev => ({ ...prev, [field.key]: value }))}
+                value={credentialsForm.getFieldValue(field.key)}
+                onChangeText={(value) => credentialsForm.setValue(field.key, value)}
                 placeholder={field.placeholder || `Enter your ${field.label.toLowerCase()}`}
                 secureTextEntry={field.type === 'password'}
                 keyboardType={field.type === 'number' ? 'numeric' : 'default'}
-                onScan={() => handleQRScanRequest(
+                onScan={() => qrScanner.openQRScanner(
                   field.key === 'apiToken' ? 'toggl-token' :
                   field.key === 'apiKey' ? 'clockify-key' :
                   'toggl-token'
@@ -302,36 +293,24 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
         
         <TouchableOpacity
           style={styles.scanAllButton}
-          onPress={() => handleQRScanRequest('project-ids')}
+          onPress={() => qrScanner.openQRScanner('project-ids')}
         >
           <Text style={styles.scanAllButtonText}>📱 Scan All Project IDs</Text>
         </TouchableOpacity>
         
-        {orientations.map(({ key, label, description }) => {
-          const qrScanKey = key === 'faceDown' ? 'face-down' :
-                           key === 'leftSide' ? 'left-side' :
-                           key === 'rightSide' ? 'right-side' :
-                           key === 'frontEdge' ? 'front-edge' :
-                           key === 'backEdge' ? 'back-edge' : 'face-down';
-          
-          return (
-            <View key={key}>
-              <Text style={styles.description}>{description}</Text>
-              <InputWithScan
-                label={label}
-                value={projectIds[key as keyof typeof projectIds]}
-                onChangeText={(value) => setProjectIds(prev => ({
-                  ...prev,
-                  [key]: value
-                }))}
-                placeholder="Project ID (optional)"
-                keyboardType="numeric"
-                onScan={() => handleQRScanRequest(qrScanKey as QRScanField)}
-                scanButtonText="QR"
-              />
-            </View>
-          );
-        })}
+        {orientations.map(({ key, label, scanKey }) => (
+          <View key={key}>
+            <InputWithScan
+              label={label}
+              value={projectIdsForm.getFieldValue(key)}
+              onChangeText={(value) => projectIdsForm.setValue(key, value)}
+              placeholder="Project ID (optional)"
+              keyboardType="numeric"
+              onScan={() => qrScanner.openQRScanner(scanKey as any)}
+              scanButtonText="QR"
+            />
+          </View>
+        ))}
 
         <TouchableOpacity 
           style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} 
@@ -348,28 +327,14 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
 
       {/* QR Code Scanner Modal */}
       <Modal
-        visible={showQRScanner}
+        visible={qrScanner.showQRScanner}
         animationType="slide"
         presentationStyle="fullScreen"
       >
         <QRCodeScanner
           onQRScanned={onQRScanResult}
-          onClose={() => {
-            setShowQRScanner(false);
-            setQrScanField(null);
-          }}
-          title={
-            qrScanField === 'toggl-token' ? 'Scan Toggl API Token' :
-            qrScanField === 'clockify-key' ? 'Scan Clockify API Key' :
-            qrScanField === 'workspace-id' ? 'Scan Workspace ID' :
-            qrScanField === 'project-ids' ? 'Scan All Project IDs' :
-            qrScanField === 'face-down' ? 'Scan Face Down Project ID' :
-            qrScanField === 'left-side' ? 'Scan Left Side Project ID' :
-            qrScanField === 'right-side' ? 'Scan Right Side Project ID' :
-            qrScanField === 'front-edge' ? 'Scan Front Edge Project ID' :
-            qrScanField === 'back-edge' ? 'Scan Back Edge Project ID' :
-            'Scan QR Code'
-          }
+          onClose={qrScanner.closeQRScanner}
+          title={qrScanner.getQRScannerTitle()}
         />
       </Modal>
     </View>
