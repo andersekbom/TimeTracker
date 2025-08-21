@@ -153,10 +153,11 @@ export class TimeTrackerBLEService {
       
       // Discover services and characteristics
       await this.device.discoverAllServicesAndCharacteristics();
-      console.log(`Connected to device: ${this.device.name}`);
+      // Log using the stored name (might be more reliable than runtime this.device.name)
+      console.log(`Connected to device: ${deviceName}`);
       
-      // Notify connection state change
-      this.notifyConnectionStateChange(true, this.device.name || undefined);
+      // Notify connection state change using the known name
+      this.notifyConnectionStateChange(true, deviceName);
       
     } catch (error) {
       this.device = null;
