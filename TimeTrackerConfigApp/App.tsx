@@ -106,6 +106,7 @@ export default function App() {
         />
       ) : currentScreen === 'setup' ? (
         <SimpleTimeTrackingSetup
+          providerId={selectedProviderId || 'toggl'}
           onComplete={handleSetupComplete}
           onBack={handleBackToProviders}
         />

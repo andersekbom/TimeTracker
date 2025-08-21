@@ -29,15 +29,19 @@ bool StateManager::handleBLEMode() {
         if (SystemUtils::applyBLEConfiguration(configStorage, togglAPI, ledController)) {
             configApplied = true;
             
-            // Exit BLE mode and continue with normal operation
-            BLE.stopAdvertise();
-            bleActive = false;
-            return false; // Exit BLE mode
+            // DUAL-MODE: Keep BLE active alongside WiFi for always-on reconfiguration
+            // Do NOT stop advertising - device must remain configurable
+            Serial.println("Configuration applied - entering dual-mode (WiFi + BLE)");
+            
+            // Continue in BLE mode but also enable normal operation
+            return true; // Stay in dual-mode
         }
     }
     
-    // Show BLE setup mode with status LED
-    updateBLEStatusLED();
+    // Show BLE setup mode with status LED (only if not configured)
+    if (!configApplied) {
+        updateBLEStatusLED();
+    }
     
     // Continue in BLE mode
     delay(Config::MAIN_LOOP_DELAY);

@@ -136,6 +136,11 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
     int statusCode = client->responseStatusCode();
     String response = client->responseBody();
 
+    Serial.print("Toggl API startTimeEntry - Status: ");
+    Serial.print(statusCode);
+    Serial.print(", Response length: ");
+    Serial.println(response.length());
+    
     if (statusCode == 200) {
         JsonDocument responseDoc;
         DeserializationError error = deserializeJson(responseDoc, response);
@@ -152,6 +157,18 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
     
     Serial.print("Failed to start time entry. Status: ");
     Serial.println(statusCode);
+    Serial.print("Response: ");
+    Serial.println(response);
+    
+    // Add specific error messaging for common failures
+    if (statusCode == 401 || statusCode == 403) {
+        Serial.println("AUTHENTICATION ERROR: Check Toggl API token and permissions");
+    } else if (statusCode == 404) {
+        Serial.println("NOT FOUND ERROR: Check workspace ID and project ID");
+    } else if (statusCode == 0) {
+        Serial.println("CONNECTION ERROR: Check WiFi connection to api.track.toggl.com");
+    }
+    
     currentTimeEntryId = "";
     return false;
 }
@@ -175,6 +192,12 @@ bool TogglAPI::stopCurrentTimeEntry() {
     client->endRequest();
 
     int statusCode = client->responseStatusCode();
+    String response = client->responseBody();
+    
+    Serial.print("Toggl API stopTimeEntry - Status: ");
+    Serial.print(statusCode);
+    Serial.print(", Response length: ");
+    Serial.println(response.length());
     
     if (statusCode == 200) {
         Serial.print("Stopped time entry ID: ");
@@ -184,6 +207,14 @@ bool TogglAPI::stopCurrentTimeEntry() {
     } else {
         Serial.print("Failed to stop time entry. Status: ");
         Serial.println(statusCode);
+        Serial.print("Response: ");
+        Serial.println(response);
+        
+        if (statusCode == 401 || statusCode == 403) {
+            Serial.println("AUTHENTICATION ERROR: Check Toggl API token");
+        } else if (statusCode == 404) {
+            Serial.println("NOT FOUND ERROR: Time entry may have already been stopped");
+        }
         return false;
     }
 }

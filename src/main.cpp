@@ -69,29 +69,33 @@ void setup() {
     // Initialize configuration and determine startup mode
     bool hasValidConfig = SystemUtils::initializeConfiguration(configStorage, togglAPI, networkManager);
     
-    if (!hasValidConfig) {
-        // Enter BLE setup mode
-        if (simpleBLEBegin()) {
-            stateManager.setBLEActive(true);
-            if (Serial) Serial.println("BLE setup mode activated successfully");
+    // ALWAYS start BLE for always-configurable device (regardless of existing config)
+    if (simpleBLEBegin()) {
+        stateManager.setBLEActive(true);
+        if (hasValidConfig) {
+            if (Serial) Serial.println("BLE dual-mode activated (WiFi configured, BLE always available)");
         } else {
-            if (Serial) Serial.println("BLE failed to start; cannot enter setup mode");
+            if (Serial) Serial.println("BLE setup mode activated (no configuration)");
         }
+    } else {
+        if (Serial) Serial.println("BLE failed to start; device not configurable");
     }
     
     if (Serial) Serial.println("TimeTracker Cube Ready!");
 }
 
 void loop() {
-    // Handle BLE setup mode or normal operation
+    // DUAL-MODE OPERATION: Always run BLE when active, plus normal operation when configured
     if (stateManager.isBLEActive()) {
-        // Continue in BLE mode unless configuration is complete
-        if (!stateManager.handleBLEMode()) {
-            // Configuration complete, exit BLE mode
-            return;
+        // Always handle BLE (for always-on reconfiguration capability)
+        stateManager.handleBLEMode();
+        
+        // Also run normal TimeTracker operation if configuration is applied
+        if (configStorage.hasValidConfiguration()) {
+            stateManager.handleNormalOperation();
         }
     } else {
-        // Normal TimeTracker operation
+        // Fallback: Normal TimeTracker operation only (shouldn't happen in always-configurable mode)
         stateManager.handleNormalOperation();
     }
 }

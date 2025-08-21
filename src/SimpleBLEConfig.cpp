@@ -1,6 +1,31 @@
 #include <Arduino.h>
 #include <ArduinoBLE.h>
 
+// Base64 decoding lookup table
+static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+// Base64 decoding function
+String base64Decode(const String& encoded) {
+    String decoded = "";
+    int val = 0, valb = -8;
+    
+    for (unsigned int i = 0; i < encoded.length(); i++) {
+        char c = encoded[i];
+        if (c == '=') break; // Padding character
+        
+        const char* pos = strchr(base64_chars, c);
+        if (pos == nullptr) continue; // Invalid character
+        
+        val = (val << 6) + (pos - base64_chars);
+        valb += 6;
+        if (valb >= 0) {
+            decoded += char((val >> valb) & 0xFF);
+            valb -= 8;
+        }
+    }
+    return decoded;
+}
+
 // Simple BLE configuration without complex constructors
 // Using global variables to avoid constructor issues
 
@@ -21,6 +46,10 @@ String receivedWorkspace = "";
 int receivedProjectIds[6] = {0, 0, 0, 0, 0, 0};
 bool configComplete = false;
 
+// BLE initialization state
+bool bleInitialized = false;
+String deviceName = "";
+
 // Forward declaration
 void checkConfigComplete();
 
@@ -36,13 +65,20 @@ void checkConfigComplete();
 // Callback functions
 void onWifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
     int length = characteristic.valueLength();
-    if (length > 0 && length < 64) {
+    if (length > 0 && length < 128) { // Allow more space for base64 encoded data
         const uint8_t* data = characteristic.value();
-        receivedSSID = "";
+        String base64Data = "";
         for (int i = 0; i < length; i++) {
-            receivedSSID += (char)data[i];
+            base64Data += (char)data[i];
         }
-        Serial.print("WiFi SSID received: ");
+        
+        // Decode base64 to get actual SSID
+        receivedSSID = base64Decode(base64Data);
+        Serial.print("WiFi SSID received (base64 length: ");
+        Serial.print(base64Data.length());
+        Serial.print(", decoded length: ");
+        Serial.print(receivedSSID.length());
+        Serial.print("): ");
         Serial.println(receivedSSID);
         
         // Update status
@@ -54,13 +90,20 @@ void onWifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
 
 void onWifiPasswordWritten(BLEDevice central, BLECharacteristic characteristic) {
     int length = characteristic.valueLength();
-    if (length > 0 && length < 64) {
+    if (length > 0 && length < 128) { // Allow more space for base64 encoded data
         const uint8_t* data = characteristic.value();
-        receivedPassword = "";
+        String base64Data = "";
         for (int i = 0; i < length; i++) {
-            receivedPassword += (char)data[i];
+            base64Data += (char)data[i];
         }
-        Serial.println("WiFi password received (hidden for security)");
+        
+        // Decode base64 to get actual password
+        receivedPassword = base64Decode(base64Data);
+        Serial.print("WiFi password received (base64 length: ");
+        Serial.print(base64Data.length());
+        Serial.print(", decoded length: ");
+        Serial.print(receivedPassword.length());
+        Serial.println(") - content hidden for security");
         
         // Update status
         if (statusChar) {
@@ -71,13 +114,23 @@ void onWifiPasswordWritten(BLEDevice central, BLECharacteristic characteristic) 
 
 void onTogglTokenWritten(BLEDevice central, BLECharacteristic characteristic) {
     int length = characteristic.valueLength();
-    if (length > 0 && length < 256) {
+    Serial.print("Toggl token BLE data received - length: ");
+    Serial.println(length);
+    
+    if (length > 0 && length < 512) { // Allow more space for base64 encoded data
         const uint8_t* data = characteristic.value();
-        receivedToken = "";
+        String base64Data = "";
         for (int i = 0; i < length; i++) {
-            receivedToken += (char)data[i];
+            base64Data += (char)data[i];
         }
-        Serial.println("Toggl token received (hidden for security)");
+        
+        // Decode base64 to get actual token
+        receivedToken = base64Decode(base64Data);
+        Serial.print("Toggl token received (base64 length: ");
+        Serial.print(base64Data.length());
+        Serial.print(", decoded length: ");
+        Serial.print(receivedToken.length());
+        Serial.println(") - content hidden for security");
         
         // Update status
         if (statusChar) {
@@ -85,18 +138,28 @@ void onTogglTokenWritten(BLEDevice central, BLECharacteristic characteristic) {
         }
         
         checkConfigComplete();
+    } else {
+        Serial.print("Invalid Toggl token length - expected 1-511, got: ");
+        Serial.println(length);
     }
 }
 
 void onWorkspaceIdWritten(BLEDevice central, BLECharacteristic characteristic) {
     int length = characteristic.valueLength();
-    if (length > 0 && length < 16) {
+    if (length > 0 && length < 32) { // Allow more space for base64 encoded data
         const uint8_t* data = characteristic.value();
-        receivedWorkspace = "";
+        String base64Data = "";
         for (int i = 0; i < length; i++) {
-            receivedWorkspace += (char)data[i];
+            base64Data += (char)data[i];
         }
-        Serial.print("Workspace ID received: ");
+        
+        // Decode base64 to get actual workspace ID
+        receivedWorkspace = base64Decode(base64Data);
+        Serial.print("Workspace ID received (base64 length: ");
+        Serial.print(base64Data.length());
+        Serial.print(", decoded length: ");
+        Serial.print(receivedWorkspace.length());
+        Serial.print("): ");
         Serial.println(receivedWorkspace);
         
         // Update status
@@ -156,7 +219,32 @@ void checkConfigComplete() {
 bool simpleBLEBegin() {
     Serial.println("Starting Simple BLE Configuration Service...");
     
-    // Initialize BLE
+    // Check if already initialized
+    if (bleInitialized) {
+        Serial.println("BLE already initialized, restarting advertising...");
+        Serial.print("Current stored device name: ");
+        Serial.println(deviceName.length() > 0 ? deviceName : "EMPTY");
+        
+        // Stop and restart advertising with preserved device name
+        BLE.stopAdvertise();
+        delay(100);
+        
+        // Restore device name
+        if (deviceName.length() > 0) {
+            BLE.setDeviceName(deviceName.c_str());
+            BLE.setLocalName(deviceName.c_str());
+            Serial.println("Restored device name: " + deviceName);
+        } else {
+            Serial.println("WARNING: No stored device name to restore!");
+        }
+        
+        // Restart advertising
+        BLE.advertise();
+        Serial.println("BLE advertising restarted");
+        return true;
+    }
+    
+    // First-time initialization
     if (!BLE.begin()) {
         Serial.println("ERROR: BLE.begin() failed!");
         return false;
@@ -164,20 +252,20 @@ bool simpleBLEBegin() {
     
     Serial.println("BLE initialized successfully");
     
-    // Create service and characteristics after BLE is initialized
+    // Create service and characteristics (only once)
     configService = new BLEService(TIMETRACKER_SERVICE_UUID);
-    wifiSSIDChar = new BLEStringCharacteristic(WIFI_SSID_CHAR_UUID, BLEWrite, 64);
-    wifiPasswordChar = new BLEStringCharacteristic(WIFI_PASSWORD_CHAR_UUID, BLEWrite, 64);
-    togglTokenChar = new BLEStringCharacteristic(TOGGL_TOKEN_CHAR_UUID, BLEWrite, 256);
-    workspaceIdChar = new BLEStringCharacteristic(WORKSPACE_ID_CHAR_UUID, BLEWrite, 16);
+    wifiSSIDChar = new BLEStringCharacteristic(WIFI_SSID_CHAR_UUID, BLEWrite, 128); // Increased for base64
+    wifiPasswordChar = new BLEStringCharacteristic(WIFI_PASSWORD_CHAR_UUID, BLEWrite, 128); // Increased for base64
+    togglTokenChar = new BLEStringCharacteristic(TOGGL_TOKEN_CHAR_UUID, BLEWrite, 512); // Increased for base64
+    workspaceIdChar = new BLEStringCharacteristic(WORKSPACE_ID_CHAR_UUID, BLEWrite, 32); // Increased for base64
     projectIdsChar = new BLECharacteristic(PROJECT_IDS_CHAR_UUID, BLEWrite, 24); // 6 integers * 4 bytes
     statusChar = new BLEStringCharacteristic(STATUS_CHAR_UUID, BLERead | BLENotify, 32);
     
-    // Set device name
+    // Set device name and store it
     String macAddress = BLE.address();
     String last4 = macAddress.substring(macAddress.length() - 5);
     last4.replace(":", "");
-    String deviceName = "TimeTracker-" + last4;
+    deviceName = "TimeTracker-" + last4;
     
     BLE.setDeviceName(deviceName.c_str());
     BLE.setLocalName(deviceName.c_str());
@@ -207,6 +295,9 @@ bool simpleBLEBegin() {
     // Start advertising
     BLE.advertise();
     
+    // Mark as initialized
+    bleInitialized = true;
+    
     Serial.println("TimeTracker BLE service started");
     Serial.println("Device name: " + deviceName);
     Serial.println("Ready for configuration via nRF Connect");
@@ -215,7 +306,25 @@ bool simpleBLEBegin() {
 }
 
 void simpleBLEPoll() {
+    static bool wasConnected = false;
+    bool isCurrentlyConnected = BLE.connected();
+    
     BLE.poll();
+    
+    // Detect disconnect event and restore device name
+    if (wasConnected && !isCurrentlyConnected) {
+        Serial.println("BLE client disconnected - restoring device name...");
+        
+        if (deviceName.length() > 0) {
+            BLE.setDeviceName(deviceName.c_str());
+            BLE.setLocalName(deviceName.c_str());
+            Serial.println("Device name restored after disconnect: " + deviceName);
+        } else {
+            Serial.println("WARNING: No device name to restore after disconnect!");
+        }
+    }
+    
+    wasConnected = isCurrentlyConnected;
 }
 
 bool isConfigComplete() {

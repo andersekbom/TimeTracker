@@ -9,6 +9,16 @@
 #include "ConfigStorage.h"
 
 /**
+ * System state enumeration for enhanced state management
+ */
+enum class SystemState {
+    BLE_SETUP_MODE = 0,
+    DUAL_MODE = 1,
+    NORMAL_OPERATION = 2,
+    ERROR_STATE = 3
+};
+
+/**
  * Manages TimeTracker system state and main loop operations
  */
 class StateManager {

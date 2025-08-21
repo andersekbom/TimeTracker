@@ -3,7 +3,8 @@ import { validateProjectId, validateWorkspaceId } from './configValidation';
 
 export type QRScanField = 
   | 'wifi-password' 
-  | 'toggl-token' 
+  | 'toggl-token'
+  | 'clockify-key'
   | 'workspace-id' 
   | 'project-ids' 
   | 'face-down' 
@@ -17,6 +18,7 @@ import { ProjectConfiguration } from '../types/TimeTrackerBLE';
 export interface QRScanHandlers {
   setWifiPassword: (value: string) => void;
   setTogglToken: (value: string) => void;
+  setClockifyKey?: (value: string) => void;
   setWorkspaceId: (value: string) => void;
   updateProjectId: (orientation: keyof ProjectConfiguration, value: string) => void;
   setProjectIds: (ids: any) => void;
@@ -38,6 +40,13 @@ export const handleQRScanResult = (
       case 'toggl-token':
         handlers.setTogglToken(data);
         Alert.alert('Success', 'Toggl API token scanned successfully!');
+        break;
+
+      case 'clockify-key':
+        if (handlers.setClockifyKey) {
+          handlers.setClockifyKey(data);
+          Alert.alert('Success', 'Clockify API key scanned successfully!');
+        }
         break;
 
       case 'workspace-id':

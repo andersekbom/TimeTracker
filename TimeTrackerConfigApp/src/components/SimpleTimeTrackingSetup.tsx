@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,29 +19,65 @@ import { handleQRScanResult, QRScanField } from '../utils/qrScanHandlers';
 interface SimpleTimeTrackingSetupProps {
   onComplete: () => void;
   onBack: () => void;
+  providerId: string; // Which provider to configure
 }
 
 export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = ({
   onComplete,
-  onBack
+  onBack,
+  providerId
 }) => {
-  // Default testing values for development
-  const [apiToken, setApiToken] = useState('8512ae2df80f50ecaa5a7e0c4c96cc57');
-  const [workspaceId, setWorkspaceId] = useState('20181448');
+  const [provider, setProvider] = useState<any>(null);
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{isValid: boolean; message: string} | null>(null);
   const [projectIds, setProjectIds] = useState({
-    faceDown: '212267804',   // Project ID 1
-    leftSide: '212267805',   // Project ID 2
-    rightSide: '212267806',  // Project ID 3
-    frontEdge: '212267807',  // Project ID 4
-    backEdge: '212267809',   // Project ID 5
+    faceDown: '0',
+    leftSide: '0',
+    rightSide: '0',
+    frontEdge: '0',
+    backEdge: '0',
   });
 
   // QR Scanner state
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [qrScanField, setQrScanField] = useState<QRScanField | null>(null);
+
+  // Load provider and set default values
+  useEffect(() => {
+    const selectedProvider = providerRegistry.getProvider(providerId);
+    if (selectedProvider) {
+      setProvider(selectedProvider);
+      
+      // Set default testing values based on provider
+      if (providerId === 'toggl') {
+        setCredentials({ 
+          apiToken: '8512ae2df80f50ecaa5a7e0c4c96cc57',
+          workspaceId: '20181448'
+        });
+        setProjectIds({
+          faceDown: '212267804',
+          leftSide: '212267805',
+          rightSide: '212267806',
+          frontEdge: '212267807',
+          backEdge: '212267809',
+        });
+      } else if (providerId === 'clockify') {
+        setCredentials({ 
+          apiKey: 'your-clockify-api-key-here',
+          workspaceId: 'your-workspace-id-here'
+        });
+        setProjectIds({
+          faceDown: '0', // Break time
+          leftSide: 'project-id-1',
+          rightSide: 'project-id-2',
+          frontEdge: 'project-id-3',
+          backEdge: 'project-id-4',
+        });
+      }
+    }
+  }, [providerId]);
 
   // QR Scanner handlers
   const handleQRScanRequest = (field: QRScanField) => {
@@ -62,8 +98,9 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     if (qrScanField) {
       handleQRScanResult(data, qrScanField, {
         setWifiPassword: () => {}, // Not used in setup
-        setTogglToken: setApiToken,
-        setWorkspaceId,
+        setTogglToken: (value) => setCredentials(prev => ({ ...prev, apiToken: value })),
+        setClockifyKey: (value) => setCredentials(prev => ({ ...prev, apiKey: value })),
+        setWorkspaceId: (value) => setCredentials(prev => ({ ...prev, workspaceId: value })),
         updateProjectId,
         setProjectIds,
       }, projectIds);
@@ -71,8 +108,24 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   };
 
   const handleVerify = async () => {
-    if (!apiToken || !workspaceId) {
-      Alert.alert('Missing Information', 'Please enter both API Token and Workspace ID');
+    if (!provider) {
+      Alert.alert('Error', 'Provider not loaded');
+      return;
+    }
+
+    // Check if required fields are filled
+    const configFields = provider.getConfigurationFields();
+    const requiredFields = configFields.filter(field => field.required);
+    
+    for (const field of requiredFields) {
+      if (!credentials[field.key] || !credentials[field.key].trim()) {
+        Alert.alert('Missing Information', `Please enter ${field.label}`);
+        return;
+      }
+    }
+
+    if (!credentials.workspaceId?.trim()) {
+      Alert.alert('Missing Information', 'Please enter Workspace ID');
       return;
     }
 
@@ -80,23 +133,18 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     setVerificationResult(null);
 
     try {
-      const togglProvider = providerRegistry.getProvider('toggl');
-      if (!togglProvider) {
-        throw new Error('Toggl provider not found');
-      }
-
       // Validate credentials
-      const credentialResult = await togglProvider.validateCredentials({ apiToken });
+      const credentialResult = await provider.validateCredentials(credentials);
       if (!credentialResult.isValid) {
         setVerificationResult({
           isValid: false,
-          message: `Credential validation failed: ${credentialResult.error || 'Invalid API token'}`
+          message: `Credential validation failed: ${credentialResult.error || 'Invalid credentials'}`
         });
         return;
       }
 
       // Validate workspace
-      const workspaceResult = await togglProvider.validateWorkspace({ apiToken }, workspaceId);
+      const workspaceResult = await provider.validateWorkspace(credentials, credentials.workspaceId!);
       if (!workspaceResult.isValid) {
         setVerificationResult({
           isValid: false,
@@ -108,7 +156,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
       // Success
       setVerificationResult({
         isValid: true,
-        message: 'Connection verified successfully! Toggl API token and workspace are valid.'
+        message: `Connection verified successfully! ${provider.name} credentials and workspace are valid.`
       });
 
     } catch (error) {
@@ -123,8 +171,24 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   };
 
   const handleSave = async () => {
-    if (!apiToken || !workspaceId) {
-      Alert.alert('Missing Information', 'Please enter both API Token and Workspace ID');
+    if (!provider) {
+      Alert.alert('Error', 'Provider not loaded');
+      return;
+    }
+
+    // Check if required fields are filled
+    const configFields = provider.getConfigurationFields();
+    const requiredFields = configFields.filter(field => field.required);
+    
+    for (const field of requiredFields) {
+      if (!credentials[field.key] || !credentials[field.key].trim()) {
+        Alert.alert('Missing Information', `Please enter ${field.label}`);
+        return;
+      }
+    }
+
+    if (!credentials.workspaceId?.trim()) {
+      Alert.alert('Missing Information', 'Please enter Workspace ID');
       return;
     }
 
@@ -142,10 +206,11 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
 
     setIsSaving(true);
     try {
+      const { workspaceId, ...providerCredentials } = credentials;
       const config: ProviderConfiguration = {
-        providerId: 'toggl',
-        credentials: { apiToken },
-        workspaceId,
+        providerId,
+        credentials: providerCredentials,
+        workspaceId: workspaceId!,
         projectIds,
       };
 
@@ -178,26 +243,29 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
       </View>
 
       <ScrollView style={styles.content}>
-        <Text style={styles.sectionTitle}>Toggl Track Configuration</Text>
-        
-        <InputWithScan
-          label="API Token"
-          value={apiToken}
-          onChangeText={setApiToken}
-          placeholder="Enter your Toggl API token"
-          onScan={() => handleQRScanRequest('toggl-token')}
-          scanButtonText="📱"
-        />
-
-        <InputWithScan
-          label="Workspace ID"
-          value={workspaceId}
-          onChangeText={setWorkspaceId}
-          placeholder="Enter workspace ID (numbers only)"
-          keyboardType="numeric"
-          onScan={() => handleQRScanRequest('workspace-id')}
-          scanButtonText="📱"
-        />
+        {provider && (
+          <>
+            <Text style={styles.sectionTitle}>{provider.name} Configuration</Text>
+            
+            {provider.getConfigurationFields().map((field: any) => (
+              <InputWithScan
+                key={field.key}
+                label={field.label + (field.required ? ' *' : '')}
+                value={credentials[field.key] || ''}
+                onChangeText={(value) => setCredentials(prev => ({ ...prev, [field.key]: value }))}
+                placeholder={field.placeholder || `Enter your ${field.label.toLowerCase()}`}
+                secureTextEntry={field.type === 'password'}
+                keyboardType={field.type === 'number' ? 'numeric' : 'default'}
+                onScan={() => handleQRScanRequest(
+                  field.key === 'apiToken' ? 'toggl-token' :
+                  field.key === 'apiKey' ? 'clockify-key' :
+                  'toggl-token'
+                )}
+                scanButtonText="📱"
+              />
+            ))}
+          </>
+        )}
 
         {/* Verify Button */}
         <TouchableOpacity 
@@ -292,6 +360,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
           }}
           title={
             qrScanField === 'toggl-token' ? 'Scan Toggl API Token' :
+            qrScanField === 'clockify-key' ? 'Scan Clockify API Key' :
             qrScanField === 'workspace-id' ? 'Scan Workspace ID' :
             qrScanField === 'project-ids' ? 'Scan All Project IDs' :
             qrScanField === 'face-down' ? 'Scan Face Down Project ID' :

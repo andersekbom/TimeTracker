@@ -13,10 +13,17 @@ struct StoredConfig {
     uint16_t checksum;          // Data integrity check
     char wifiSSID[64];          // WiFi SSID
     char wifiPassword[64];      // WiFi password  
-    char togglToken[128];       // Toggl API token
+    char togglToken[256];       // Toggl API token
     char workspaceId[16];       // Toggl workspace ID
     int projectIds[6];          // Project IDs for each orientation
+    uint32_t lastUpdateTime;    // Last update timestamp
     bool isValid;               // Configuration validity flag
+};
+
+// Backup configuration structure
+struct BackupConfig {
+    StoredConfig config;
+    bool hasBackup;
 };
 
 class ConfigStorage {
@@ -26,6 +33,7 @@ private:
     static const int CONFIG_START_ADDRESS = 0;
     
     StoredConfig config;
+    BackupConfig backup;
     
     uint16_t calculateChecksum(const StoredConfig& cfg) const;
     bool validateChecksum(const StoredConfig& cfg) const;
@@ -48,6 +56,23 @@ public:
     String getWorkspaceId() const { return String(config.workspaceId); }
     const int* getProjectIds() const { return config.projectIds; }
     bool isConfigValid() const { return config.isValid; }
+    
+    // Validation methods
+    bool validateWiFiCredentials(const String& ssid, const String& password) const;
+    bool validateTogglCredentials(const String& token, const String& workspace) const;
+    bool validateProjectIds(const int* projects) const;
+    bool validateCompleteConfiguration(const StoredConfig& cfg) const;
+    
+    // Backup and restore
+    bool createBackup();
+    bool restoreFromBackup();
+    bool factoryReset();
+    
+    // Versioning and diagnostics
+    int getConfigurationVersion() const { return config.version; }
+    uint32_t getLastUpdateTimestamp() const;
+    bool isStorageHealthy() const;
+    size_t getStorageUsage() const;
     
     // Debug
     void printConfiguration() const;

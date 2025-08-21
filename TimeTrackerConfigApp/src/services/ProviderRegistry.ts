@@ -1,5 +1,6 @@
 import { TimeTrackingProvider, ProviderRegistry } from '../types/TimeTrackingProvider';
 import { TogglProvider } from '../providers/TogglProvider';
+import { ClockifyProvider } from '../providers/ClockifyProvider';
 
 class TimeTrackingProviderRegistry implements ProviderRegistry {
   private providers = new Map<string, TimeTrackingProvider>();
@@ -11,8 +12,8 @@ class TimeTrackingProviderRegistry implements ProviderRegistry {
 
   private registerDefaultProviders(): void {
     this.register(new TogglProvider());
+    this.register(new ClockifyProvider());
     // Future providers can be added here:
-    // this.register(new ClockifyProvider());
     // this.register(new RescueTimeProvider());
     // this.register(new TimeCampProvider());
   }
