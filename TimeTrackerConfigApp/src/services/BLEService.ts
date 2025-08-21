@@ -147,7 +147,8 @@ export class TimeTrackerBLEService {
         console.log(`Timestamp: ${new Date().toISOString()}`);
         console.log(`=============================\n`);
         this.device = null;
-        this.notifyConnectionStateChange(false);
+        // Notify with deviceName so we can re-add to list after disconnect
+        this.notifyConnectionStateChange(false, deviceName);
       });
       
       // Discover services and characteristics

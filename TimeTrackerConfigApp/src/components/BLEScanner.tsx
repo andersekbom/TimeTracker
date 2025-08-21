@@ -48,8 +48,14 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
         onConnected(deviceName);
       } else {
         onDisconnected();
-        // After a disconnect, restart scanning so the user can reconnect without tapping Scan
-        startScan();
+        // Re-add the disconnected device (by name) to the list so the user can reconnect
+        if (deviceName && selectedDevice && selectedDevice.name === deviceName) {
+          setDevices(prev => prev.some(d => d.id === selectedDevice.id)
+            ? prev
+            : [selectedDevice, ...prev]
+          );
+        }
+        // No auto-scan: list still contains the last known device for reconnection
       }
     };
 
