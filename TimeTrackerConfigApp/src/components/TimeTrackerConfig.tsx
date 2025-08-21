@@ -17,13 +17,11 @@ import { TimeTrackerConfiguration } from '../types/TimeTrackerBLE';
 import { QRCodeScanner } from './QRCodeScanner';
 import { WiFiNetworkPicker } from './WiFiNetworkPicker';
 import { InputWithScan } from './ui/InputWithScan';
-import { ProjectIdInput } from './ui/ProjectIdInput';
 import { providerStorage } from '../services/ProviderStorage';
 import { providerRegistry } from '../services/ProviderRegistry';
 import { ProviderConfiguration } from '../types/TimeTrackingProvider';
 import { validateConfiguration, buildConfiguration } from '../utils/configValidation';
-import { validateTogglCredentials } from '../utils/togglValidation';
-import { handleQRScanResult, QRScanField } from '../utils/qrScanHandlers';
+import { Picker } from '@react-native-picker/picker';
 
 interface TimeTrackerConfigProps {
   deviceName: string;
@@ -382,56 +380,6 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
-              <Text style={styles.sectionTitle}>Cube Orientation Projects</Text>
-              <Text style={styles.sectionSubtitle}>
-                Map each cube orientation to a Toggl project ID
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.sectionScanButton}
-              onPress={() => handleQRScanRequest('project-ids')}
-            >
-              <Text style={styles.sectionScanButtonText}>📱 Scan All</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.orientationGrid}>
-            <ProjectIdInput
-              label="Face Down"
-              value={projectIds.faceDown}
-              onValueChange={(value) => updateProjectId('faceDown', value)}
-              onScan={() => handleQRScanRequest('face-down')}
-            />
-
-            <ProjectIdInput
-              label="Left Side"
-              value={projectIds.leftSide}
-              onValueChange={(value) => updateProjectId('leftSide', value)}
-              onScan={() => handleQRScanRequest('left-side')}
-            />
-
-            <ProjectIdInput
-              label="Right Side"
-              value={projectIds.rightSide}
-              onValueChange={(value) => updateProjectId('rightSide', value)}
-              onScan={() => handleQRScanRequest('right-side')}
-            />
-
-            <ProjectIdInput
-              label="Front Edge"
-              value={projectIds.frontEdge}
-              onValueChange={(value) => updateProjectId('frontEdge', value)}
-              onScan={() => handleQRScanRequest('front-edge')}
-            />
-
-            <ProjectIdInput
-              label="Back Edge"
-              value={projectIds.backEdge}
-              onValueChange={(value) => updateProjectId('backEdge', value)}
-              onScan={() => handleQRScanRequest('back-edge')}
-            />
-          </View>
-        </View>
 
         {/* Send Configuration Button */}
         <View style={styles.buttonContainer}>
