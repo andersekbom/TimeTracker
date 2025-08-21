@@ -14,10 +14,12 @@ import { providerStorage } from '../services/ProviderStorage';
 import { providerRegistry } from '../services/ProviderRegistry';
 import { QRCodeScanner } from './QRCodeScanner';
 import { InputWithScan } from './ui/InputWithScan';
+import { Picker } from '@react-native-picker/picker';
 import { useQRScanner } from '../hooks/useQRScanner';
 import { useFormManager } from '../hooks/useFormManager';
 import { ValidationService } from '../services/ValidationService';
 import { ErrorHandler } from '../utils/errorHandler';
+import type { ProjectInfo } from '../types/TimeTrackingProvider';
 import { DEFAULT_VALUES, TEST_CONFIG } from '../constants/config';
 
 interface SimpleTimeTrackingSetupProps {
@@ -35,9 +37,8 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{isValid: boolean; message: string} | null>(null);
-  const [isFetchingProjects, setIsFetchingProjects] = useState(false);
-  // Fetched project names keyed by orientation (faceDown, leftSide, etc.)
-  const [projectNames, setProjectNames] = useState<Record<string, string>>({});
+  // List of available projects fetched after verification
+  const [availableProjects, setAvailableProjects] = useState<ProjectInfo[]>([]);
   
   // Use form manager for credentials
   const credentialsForm = useFormManager();
@@ -159,6 +160,14 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
         isValid: true,
         message: `API connection verified successfully! ${provider.name} credentials and workspace are valid.`
       });
+      // Fetch available projects for dropdowns
+      try {
+        const { workspaceId, ...creds } = credentialsForm.getValues();
+        const projs = await provider.getProjects(creds, workspaceId);
+        setAvailableProjects(projs);
+      } catch (err) {
+        // ignore project fetch errors here
+      }
     } else {
       const userMessage = ErrorHandler.createUserFriendlyMessage(new Error(result.error?.message || ''));
       setVerificationResult({
@@ -227,43 +236,6 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     }
   };
 
-  const handleFetchProjectNames = async () => {
-    if (!verificationResult?.isValid) {
-      Alert.alert(
-        'Verification Required',
-        'Please verify your API token and workspace before fetching project names.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-    if (!provider) {
-      Alert.alert('Error', 'Provider not loaded');
-      return;
-    }
-    setIsFetchingProjects(true);
-    try {
-      const { workspaceId, ...creds } = credentialsForm.getValues();
-      const idsMap = projectIdsForm.getValues();
-      const projects = await provider.getProjects(creds, workspaceId);
-      const namesMap: Record<string, string> = {};
-      Object.entries(idsMap).forEach(([key, id]) => {
-        const pid = id?.trim();
-        if (!pid) {
-          namesMap[key] = '';
-        } else {
-          const found = projects.find((p) => p.id === pid);
-          namesMap[key] = found
-            ? found.name
-            : `No project found for ID ${pid}`;
-        }
-      });
-      setProjectNames(namesMap);
-    } catch (err: any) {
-      ErrorHandler.showAlert(err.message || 'Failed to fetch project names', 'Error');
-    } finally {
-      setIsFetchingProjects(false);
-    }
-  };
 
   const orientations = DEFAULT_VALUES.PROJECT_ORIENTATIONS;
 
@@ -334,44 +306,23 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
 
         {verificationResult?.isValid && (
           <>
-            <Text style={styles.sectionTitle}>Project IDs by Orientation</Text>
+            <Text style={styles.sectionTitle}>Select Projects for Orientations</Text>
 
-            <TouchableOpacity
-              style={styles.scanAllButton}
-              onPress={() => qrScanner.openQRScanner('project-ids')}
-            >
-              <Text style={styles.scanAllButtonText}>📱 Scan All Project IDs</Text>
-            </TouchableOpacity>
-
-            {orientations.map(({ key, label, scanKey }) => (
-              <View key={key}>
-                <InputWithScan
-                  label={projectNames[key]
-                    ? `${label} - ${projectNames[key]}`
-                    : label
-                  }
-                  value={projectIdsForm.getFieldValue(key)}
-                  onChangeText={(value) => projectIdsForm.setValue(key, value)}
-                  placeholder="Project ID (optional)"
-                  keyboardType="numeric"
-                  onScan={() => qrScanner.openQRScanner(scanKey as any)}
-                  scanButtonText="QR"
-                />
+            {orientations.map(({ key, label }) => (
+              <View key={key} style={styles.pickerContainer}>
+                <Text style={styles.pickerLabel}>{label}</Text>
+                <Picker
+                  selectedValue={projectIdsForm.getFieldValue(key)}
+                  onValueChange={(value) => projectIdsForm.setValue(key, value)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="-- Select a project --" value="" />
+                  {availableProjects.map((p) => (
+                    <Picker.Item key={p.id} label={`${p.id}: ${p.name}`} value={p.id} />
+                  ))}
+                </Picker>
               </View>
             ))}
-
-            {/* Fetch project names for entered IDs */}
-            <TouchableOpacity
-              style={[styles.scanAllButton, isFetchingProjects && styles.saveButtonDisabled]}
-              onPress={handleFetchProjectNames}
-              disabled={isFetchingProjects}
-            >
-              {isFetchingProjects ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.scanAllButtonText}>Fetch Project Names</Text>
-              )}
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
@@ -484,17 +435,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  scanAllButton: {
-    backgroundColor: '#2196F3',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
+  pickerContainer: {
     marginBottom: 16,
   },
-  scanAllButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+  pickerLabel: {
+    fontSize: 16,
+    color: '#333333',
+    marginBottom: 8,
+  },
+  picker: {
+    backgroundColor: '#F8F8F8',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
   },
   verifyButton: {
     backgroundColor: '#FF9500',
