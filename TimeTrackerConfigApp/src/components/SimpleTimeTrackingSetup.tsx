@@ -36,6 +36,8 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{isValid: boolean; message: string} | null>(null);
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
+  // Fetched project names keyed by orientation (faceDown, leftSide, etc.)
+  const [projectNames, setProjectNames] = useState<Record<string, string>>({});
   
   // Use form manager for credentials
   const credentialsForm = useFormManager();
@@ -241,17 +243,21 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     setIsFetchingProjects(true);
     try {
       const { workspaceId, ...creds } = credentialsForm.getValues();
-      const ids = Object.values(projectIdsForm.getValues());
+      const idsMap = projectIdsForm.getValues();
       const projects = await provider.getProjects(creds, workspaceId);
-      const messages = ids.map((id) => {
+      const namesMap: Record<string, string> = {};
+      Object.entries(idsMap).forEach(([key, id]) => {
         const pid = id?.trim();
         if (!pid) {
-          return `No project ID entered`;
+          namesMap[key] = '';
+        } else {
+          const found = projects.find((p) => p.id === pid);
+          namesMap[key] = found
+            ? found.name
+            : `No project found for ID ${pid}`;
         }
-        const found = projects.find((p) => p.id === pid);
-        return found ? `${pid}: ${found.name}` : `No project found for ID ${pid}`;
       });
-      Alert.alert('Project Names', messages.join('\n'));
+      setProjectNames(namesMap);
     } catch (err: any) {
       ErrorHandler.showAlert(err.message || 'Failed to fetch project names', 'Error');
     } finally {
@@ -338,7 +344,10 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
         {orientations.map(({ key, label, scanKey }) => (
           <View key={key}>
             <InputWithScan
-              label={label}
+              label={projectNames[key]
+                ? `${label} - ${projectNames[key]}`
+                : label
+              }
               value={projectIdsForm.getFieldValue(key)}
               onChangeText={(value) => projectIdsForm.setValue(key, value)}
               placeholder="Project ID (optional)"
