@@ -35,18 +35,18 @@ export default function App() {
     
     // Don't immediately navigate away - wait to see if it's a false positive
     // during configuration transmission
-    setTimeout(() => {
-      if (currentScreen !== 'config') {
-        // If we're not in config screen, handle disconnection normally
-        setIsConnected(false);
-        setConnectedDeviceName('');
-        setCurrentScreen('scanner');
-      } else {
-        // If we're in config screen, only navigate away if still disconnected
-        console.log('App: Delayed disconnection check - still on config screen');
-        // For now, don't auto-navigate during config to prevent interruption
-      }
-    }, 1000);
+      setTimeout(() => {
+        if (currentScreen !== 'config') {
+          // If we're not in config screen, handle disconnection normally
+          setIsConnected(false);
+          // Preserve device name so users can reconnect without re-scanning
+          setCurrentScreen('scanner');
+        } else {
+          // If we're in config screen, only navigate away if still disconnected
+          console.log('App: Delayed disconnection check - still on config screen');
+          // Do not auto-navigate during config to prevent interruption
+        }
+      }, 1000);
   };
 
   const handleError = (error: string) => {
