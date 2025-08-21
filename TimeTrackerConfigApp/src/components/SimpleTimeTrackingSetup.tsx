@@ -247,7 +247,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
                 value={credentialsForm.getFieldValue(field.key)}
                 onChangeText={(value) => credentialsForm.setValue(field.key, value)}
                 placeholder={field.placeholder || `Enter your ${field.label.toLowerCase()}`}
-                secureTextEntry={field.type === 'password'}
+                secureTextEntry={field.secure ?? (field.type === 'password')}
                 keyboardType={field.type === 'number' ? 'numeric' : 'default'}
                 onScan={() => qrScanner.openQRScanner(
                   field.key === 'apiToken' ? 'toggl-token' :
