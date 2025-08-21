@@ -140,7 +140,12 @@ export class TimeTrackerBLEService {
       // Set up disconnect monitoring
       const deviceName = this.device.name; // Store name before disconnect
       this.device.onDisconnected((error, device) => {
-        console.log(`Device ${deviceName || device?.name || 'undefined'} disconnected: ${error?.message || 'null'}`);
+        console.log(`\n=== BLE DISCONNECTION EVENT ===`);
+        console.log(`Device: ${deviceName || device?.name || 'undefined'}`);
+        console.log(`Error: ${error?.message || 'null'}`);
+        console.log(`Error code: ${error?.code || 'null'}`);
+        console.log(`Timestamp: ${new Date().toISOString()}`);
+        console.log(`=============================\n`);
         this.device = null;
         this.notifyConnectionStateChange(false);
       });
@@ -179,40 +184,70 @@ export class TimeTrackerBLEService {
       throw new Error('No device connected');
     }
 
+    console.log('=== STARTING CONFIGURATION TRANSMISSION ===');
+    console.log('Device connected:', this.device.name);
+    console.log('Device ID:', this.device.id);
+
     try {
-      // Send WiFi SSID
+      // Send WiFi SSID - send raw string, BLE handles encoding
+      console.log('Sending WiFi SSID:', config.wifi.ssid);
+      console.log('SSID length:', config.wifi.ssid.length);
+      
+      // Send raw string directly - let BLE library handle encoding
+      const ssidAsBase64 = this.stringToBase64(config.wifi.ssid);
+      console.log('Raw SSID as Base64:', ssidAsBase64);
+      
       await this.device.writeCharacteristicWithResponseForService(
         TIMETRACKER_SERVICE_UUID,
         BLE_CHARACTERISTICS.WIFI_SSID,
-        this.stringToBase64(config.wifi.ssid)
+        ssidAsBase64
       );
 
-      // Send WiFi Password
+      // Small delay to prevent BLE connection instability
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Send WiFi Password - same raw string approach as SSID
+      const passwordAsBase64 = this.stringToBase64(config.wifi.password);
+      console.log('Sending WiFi Password as Base64:', passwordAsBase64);
+      
       await this.device.writeCharacteristicWithResponseForService(
         TIMETRACKER_SERVICE_UUID,
         BLE_CHARACTERISTICS.WIFI_PASSWORD,
-        this.stringToBase64(config.wifi.password)
+        passwordAsBase64
       );
 
-      // Send Toggl Token
+      // Small delay to prevent BLE connection instability
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Send Toggl Token - same raw string approach
+      const tokenAsBase64 = this.stringToBase64(config.toggl.apiToken);
       console.log('Sending Toggl token, length:', config.toggl.apiToken.length, 'characters');
-      const base64Token = this.stringToBase64(config.toggl.apiToken);
-      console.log('Base64 encoded token length:', base64Token.length, 'characters');
+      console.log('Token as Base64:', tokenAsBase64);
+      
       await this.device.writeCharacteristicWithResponseForService(
         TIMETRACKER_SERVICE_UUID,
         BLE_CHARACTERISTICS.TOGGL_TOKEN,
-        base64Token
+        tokenAsBase64
       );
       console.log('Toggl token sent successfully');
 
-      // Send Workspace ID
+      // Small delay to prevent BLE connection instability
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Send Workspace ID - same raw string approach
+      const workspaceAsBase64 = this.stringToBase64(config.toggl.workspaceId);
       console.log('Sending workspace ID:', config.toggl.workspaceId);
+      console.log('Workspace ID as Base64:', workspaceAsBase64);
+      
       await this.device.writeCharacteristicWithResponseForService(
         TIMETRACKER_SERVICE_UUID,
         BLE_CHARACTERISTICS.WORKSPACE_ID,
-        this.stringToBase64(config.toggl.workspaceId)
+        workspaceAsBase64
       );
       console.log('Workspace ID sent successfully');
+
+      // Small delay to prevent BLE connection instability
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Send Project IDs (6 integers as 24-byte array)
       const projectIds = [
@@ -231,8 +266,12 @@ export class TimeTrackerBLEService {
         this.projectIdsToBase64(projectIds)
       );
       console.log('Project IDs sent successfully');
+      console.log('=== CONFIGURATION TRANSMISSION COMPLETE ===');
+      console.log('Device still connected:', this.device?.name || 'DISCONNECTED');
 
     } catch (error) {
+      console.log('=== CONFIGURATION TRANSMISSION FAILED ===');
+      console.log('Device still connected:', this.device?.name || 'DISCONNECTED');
       throw new Error(`Failed to send configuration: ${error}`);
     }
   }
@@ -338,6 +377,13 @@ export class TimeTrackerBLEService {
   // Utility methods
   private stringToBase64(str: string): string {
     return Buffer.from(str, 'utf8').toString('base64');
+  }
+  
+  // Convert string to Base64 bytes for BLE transmission
+  private stringToBase64Bytes(str: string): string {
+    const base64String = Buffer.from(str, 'utf8').toString('base64');
+    // Convert the Base64 string itself to Base64 (double encoding for BLE)
+    return Buffer.from(base64String, 'utf8').toString('base64');
   }
 
   private base64ToString(base64: string): string {

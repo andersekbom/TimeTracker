@@ -2,13 +2,21 @@ import { ProviderStorage, ProviderConfiguration } from '../types/TimeTrackingPro
 import { safeStorage } from '../utils/SafeStorage';
 
 const STORAGE_KEY = '@timetracker_provider_config';
+const MULTI_STORAGE_KEY = '@timetracker_multi_provider_configs';
 
 export class TimeTrackingProviderStorage implements ProviderStorage {
   
   async saveConfiguration(config: ProviderConfiguration): Promise<void> {
     try {
+      // Save to both single and multi storage for backward compatibility
       const serialized = JSON.stringify(config);
       await safeStorage.setItem(STORAGE_KEY, serialized);
+      
+      // Also save to multi-provider storage
+      const multiConfigs = await this.loadAllConfigurations();
+      multiConfigs[config.providerId] = config;
+      await safeStorage.setItem(MULTI_STORAGE_KEY, JSON.stringify(multiConfigs));
+      
       console.log(`Saved ${config.providerId} provider configuration`);
     } catch (error) {
       console.error('Failed to save provider configuration:', error);
@@ -40,6 +48,51 @@ export class TimeTrackingProviderStorage implements ProviderStorage {
       console.error('Failed to clear provider configuration:', error);
       throw new Error('Failed to clear provider configuration');
     }
+  }
+
+  async clearConfiguration(providerId?: string): Promise<void> {
+    if (!providerId) {
+      // Clear single config (backward compatibility)
+      return this.clearConfiguration();
+    }
+
+    try {
+      const multiConfigs = await this.loadAllConfigurations();
+      delete multiConfigs[providerId];
+      await safeStorage.setItem(MULTI_STORAGE_KEY, JSON.stringify(multiConfigs));
+      console.log(`Cleared ${providerId} provider configuration`);
+    } catch (error) {
+      console.error('Failed to clear provider configuration:', error);
+      throw new Error('Failed to clear provider configuration');
+    }
+  }
+
+  async loadAllConfigurations(): Promise<Record<string, ProviderConfiguration>> {
+    try {
+      const serialized = await safeStorage.getItem(MULTI_STORAGE_KEY);
+      if (!serialized) {
+        // Try to migrate from single config
+        const singleConfig = await this.loadConfiguration();
+        if (singleConfig) {
+          const multiConfigs = { [singleConfig.providerId]: singleConfig };
+          await safeStorage.setItem(MULTI_STORAGE_KEY, JSON.stringify(multiConfigs));
+          return multiConfigs;
+        }
+        return {};
+      }
+      
+      const configs = JSON.parse(serialized) as Record<string, ProviderConfiguration>;
+      console.log(`Loaded ${Object.keys(configs).length} provider configurations`);
+      return configs;
+    } catch (error) {
+      console.error('Failed to load provider configurations:', error);
+      return {};
+    }
+  }
+
+  async getVerifiedProviders(): Promise<ProviderConfiguration[]> {
+    const allConfigs = await this.loadAllConfigurations();
+    return Object.values(allConfigs).filter(config => this.isValidConfiguration(config));
   }
 
   async hasConfiguration(): Promise<boolean> {

@@ -115,7 +115,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
 
     // Check if required fields are filled
     const configFields = provider.getConfigurationFields();
-    const requiredFields = configFields.filter(field => field.required);
+    const requiredFields = configFields.filter((field: any) => field.required);
     
     for (const field of requiredFields) {
       if (!credentials[field.key] || !credentials[field.key].trim()) {
@@ -156,7 +156,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
       // Success
       setVerificationResult({
         isValid: true,
-        message: `Connection verified successfully! ${provider.name} credentials and workspace are valid.`
+        message: `API connection verified successfully! ${provider.name} credentials and workspace are valid.`
       });
 
     } catch (error) {
@@ -178,7 +178,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
 
     // Check if required fields are filled
     const configFields = provider.getConfigurationFields();
-    const requiredFields = configFields.filter(field => field.required);
+    const requiredFields = configFields.filter((field: any) => field.required);
     
     for (const field of requiredFields) {
       if (!credentials[field.key] || !credentials[field.key].trim()) {
@@ -215,7 +215,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
       };
 
       await providerStorage.saveConfiguration(config);
-      Alert.alert('Success', 'Configuration saved successfully!');
+      //Alert.alert('Success', 'Configuration saved successfully!');
       onComplete();
     } catch (error) {
       Alert.alert('Error', 'Failed to save configuration');
@@ -261,7 +261,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
                   field.key === 'apiKey' ? 'clockify-key' :
                   'toggl-token'
                 )}
-                scanButtonText="📱"
+                scanButtonText="QR"
               />
             ))}
           </>
@@ -279,7 +279,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
               <Text style={styles.verifyButtonText}>Verifying...</Text>
             </View>
           ) : (
-            <Text style={styles.verifyButtonText}>🔍 Verify Connection</Text>
+            <Text style={styles.verifyButtonText}>🔍 Verify API Connection</Text>
           )}
         </TouchableOpacity>
 
@@ -327,7 +327,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
                 placeholder="Project ID (optional)"
                 keyboardType="numeric"
                 onScan={() => handleQRScanRequest(qrScanKey as QRScanField)}
-                scanButtonText="📱"
+                scanButtonText="QR"
               />
             </View>
           );
@@ -385,6 +385,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 20,
+    paddingTop: 50,
     backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

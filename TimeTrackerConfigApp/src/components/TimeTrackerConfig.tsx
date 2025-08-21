@@ -37,8 +37,8 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
   onBack,
 }) => {
   // WiFi Configuration
-  const [wifiSSID, setWifiSSID] = useState('youmoni-guest');
-  const [wifiPassword, setWifiPassword] = useState('IoT99Rul3s.');
+  const [wifiSSID, setWifiSSID] = useState('eichbaum');
+  const [wifiPassword, setWifiPassword] = useState('zooweedoobee');
 
   // Provider Configuration from Setup
   const [providerConfig, setProviderConfig] = useState<ProviderConfiguration | null>(null);
@@ -166,20 +166,58 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
 
     try {
       const config = buildConfiguration(wifiSSID, wifiPassword, togglToken, workspaceId, projectIds);
+      
+      // Subscribe to status updates to monitor configuration progress
+      const statusPromise = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Configuration timeout - no success confirmation received'));
+        }, 15000); // 15 second timeout
+        
+        bleService.subscribeToStatus(
+          (status) => {
+            console.log('Device status update:', status);
+            if (status === 'config_success') {
+              clearTimeout(timeout);
+              console.log('Configuration confirmed successful by device!');
+              resolve();
+            }
+          },
+          (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          }
+        ).catch(error => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+      });
+      
+      // Send configuration and wait for device confirmation
       await bleService.sendConfiguration(config);
+      console.log('Configuration sent, waiting for device confirmation...');
+      
+      // Wait for device to confirm successful configuration
+      await statusPromise;
       
       Alert.alert(
-        'Configuration Sent',
-        'Configuration has been sent to the TimeTracker device successfully!',
+        'Configuration Complete',
+        'Your TimeTracker device has been configured successfully and is now connecting to WiFi!',
         [
           {
-            text: 'OK',
-            onPress: onConfigurationSent,
+            text: 'Done',
+            onPress: () => {
+              // Give device time to start WiFi before potential disconnection
+              setTimeout(() => {
+                onConfigurationSent();
+              }, 1000);
+            },
           },
         ]
       );
+      
     } catch (error) {
-      Alert.alert('Configuration Failed', `Failed to send configuration: ${error}`);
+      console.error('Configuration error:', error);
+      Alert.alert('Configuration Failed', `Failed to configure device: ${error}`);
     } finally {
       setIsSending(false);
     }

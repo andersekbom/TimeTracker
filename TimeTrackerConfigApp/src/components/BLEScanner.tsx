@@ -116,7 +116,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
       // Stop scanning after 30 seconds
       setTimeout(() => {
         stopScan();
-      }, 30000);
+      }, 10000);
 
     } catch (error) {
       Alert.alert('Error', `Failed to start scan: ${error}`);
@@ -229,9 +229,8 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <Text style={styles.title}>TimeTracker Devices</Text>
-      
-      <View style={styles.headerActions}>
+      <Text style={styles.title}>Time Tracker Redux</Text>
+        <View style={styles.headerActions}>
         <TouchableOpacity
           style={[
             styles.scanButton, 
@@ -248,10 +247,10 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
         
         {onSetupTimeTracking && (
           <TouchableOpacity
-            style={styles.cogButton}
+            style={styles.setupButton}
             onPress={onSetupTimeTracking}
           >
-            <Text style={styles.cogIcon}>⚙️</Text>
+            <Text style={styles.setupText}>Setup</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -288,6 +287,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
+    paddingTop: 50,
     backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -317,17 +317,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  cogButton: {
-    backgroundColor: '#6C7B7F',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
+  setupButton: {
+    backgroundColor: '#147500ff',
+    padding: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
     justifyContent: 'center',
-    marginLeft: 12,
+    alignItems: 'center',
+    flex: 1,
   },
-  cogIcon: {
-    fontSize: 20,
+  setupText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
   scanButton: {
     backgroundColor: '#007AFF',
@@ -336,7 +338,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    flex: 1,
+    flex: 3,
   },
   scanButtonActive: {
     backgroundColor: '#FF3B30',

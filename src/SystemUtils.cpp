@@ -9,6 +9,7 @@ extern String getWifiPassword();
 extern String getTogglToken();
 extern String getWorkspaceId();
 extern const int* getProjectIds();
+extern "C" void updateBLEStatus(const char* status);
 
 namespace SystemUtils {
 
@@ -89,7 +90,17 @@ namespace SystemUtils {
             return false;
         }
 
-        if (Serial) Serial.println("Configuration received via BLE, testing WiFi connection...");
+        if (Serial) Serial.println("FULL configuration received via BLE!");
+        
+        // Send final status to mobile app indicating successful completion
+        updateBLEStatus("config_success");
+        if (Serial) Serial.println("Sent 'config_success' status - mobile app can disconnect");
+        
+        // Allow time for mobile app to receive success status and disconnect gracefully
+        if (Serial) Serial.println("Waiting 2 seconds for mobile app to process success and disconnect...");
+        delay(2000);
+        
+        if (Serial) Serial.println("Starting WiFi connection (BLE will remain discoverable)...");
         
         // Create temporary NetworkManager for testing
         NetworkManager tempNetworkManager;

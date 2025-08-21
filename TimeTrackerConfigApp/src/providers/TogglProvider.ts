@@ -22,7 +22,7 @@ export class TogglProvider extends TimeTrackingProvider {
         type: 'password',
         placeholder: 'Enter your Toggl API token',
         required: true,
-        secure: true,
+        secure: false,
         validation: {
           minLength: 16,
           maxLength: 64,

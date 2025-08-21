@@ -13,7 +13,7 @@ export const InputWithScan: React.FC<InputWithScanProps> = ({
   label,
   required = false,
   onScan,
-  scanButtonText = '📱 Scan',
+  scanButtonText = 'QR',
   scanButtonIcon,
   style,
   ...textInputProps

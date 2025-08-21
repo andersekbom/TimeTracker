@@ -45,6 +45,7 @@ String receivedToken = "";
 String receivedWorkspace = "";
 int receivedProjectIds[6] = {0, 0, 0, 0, 0, 0};
 bool configComplete = false;
+bool projectIdsReceived = false;
 
 // BLE initialization state
 bool bleInitialized = false;
@@ -72,14 +73,33 @@ void onWifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
             base64Data += (char)data[i];
         }
         
-        // Decode base64 to get actual SSID
-        receivedSSID = base64Decode(base64Data);
+        // Debug: Print hex dump of received data
+        Serial.print("Raw BLE data (");
+        Serial.print(length);
+        Serial.print(" bytes): ");
+        for (int i = 0; i < length; i++) {
+            if (data[i] < 16) Serial.print("0");
+            Serial.print(data[i], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+        
+        Serial.print("Raw string received: '");
+        Serial.print(base64Data);
+        Serial.println("'");
+        
+        // Use the raw string directly - no Base64 decoding needed
+        receivedSSID = base64Data;
+        Serial.print("Final SSID: '");
+        Serial.print(receivedSSID);
+        Serial.println("'");
         Serial.print("WiFi SSID received (base64 length: ");
         Serial.print(base64Data.length());
         Serial.print(", decoded length: ");
         Serial.print(receivedSSID.length());
-        Serial.print("): ");
-        Serial.println(receivedSSID);
+        Serial.print("): '");
+        Serial.print(receivedSSID);
+        Serial.println("'");
         
         // Update status
         if (statusChar) {
@@ -97,8 +117,8 @@ void onWifiPasswordWritten(BLEDevice central, BLECharacteristic characteristic) 
             base64Data += (char)data[i];
         }
         
-        // Decode base64 to get actual password
-        receivedPassword = base64Decode(base64Data);
+        // Use raw string directly - no Base64 decoding needed
+        receivedPassword = base64Data;
         Serial.print("WiFi password received (base64 length: ");
         Serial.print(base64Data.length());
         Serial.print(", decoded length: ");
@@ -124,8 +144,8 @@ void onTogglTokenWritten(BLEDevice central, BLECharacteristic characteristic) {
             base64Data += (char)data[i];
         }
         
-        // Decode base64 to get actual token
-        receivedToken = base64Decode(base64Data);
+        // Use raw string directly - no Base64 decoding needed
+        receivedToken = base64Data;
         Serial.print("Toggl token received (base64 length: ");
         Serial.print(base64Data.length());
         Serial.print(", decoded length: ");
@@ -137,7 +157,7 @@ void onTogglTokenWritten(BLEDevice central, BLECharacteristic characteristic) {
             statusChar->writeValue("token_received");
         }
         
-        checkConfigComplete();
+        // Don't check completion here - wait for all data
     } else {
         Serial.print("Invalid Toggl token length - expected 1-511, got: ");
         Serial.println(length);
@@ -153,8 +173,8 @@ void onWorkspaceIdWritten(BLEDevice central, BLECharacteristic characteristic) {
             base64Data += (char)data[i];
         }
         
-        // Decode base64 to get actual workspace ID
-        receivedWorkspace = base64Decode(base64Data);
+        // Use raw string directly - no Base64 decoding needed
+        receivedWorkspace = base64Data;
         Serial.print("Workspace ID received (base64 length: ");
         Serial.print(base64Data.length());
         Serial.print(", decoded length: ");
@@ -167,7 +187,7 @@ void onWorkspaceIdWritten(BLEDevice central, BLECharacteristic characteristic) {
             statusChar->writeValue("workspace_received");
         }
         
-        checkConfigComplete();
+        // Don't check completion here - wait for project IDs
     }
 }
 
@@ -193,6 +213,9 @@ void onProjectIdsWritten(BLEDevice central, BLECharacteristic characteristic) {
             Serial.println(receivedProjectIds[i]);
         }
         
+        // Mark project IDs as received
+        projectIdsReceived = true;
+        
         // Update status
         if (statusChar) {
             statusChar->writeValue("projects_received");
@@ -206,13 +229,25 @@ void onProjectIdsWritten(BLEDevice central, BLECharacteristic characteristic) {
 }
 
 void checkConfigComplete() {
-    // Check if we have the minimum required configuration (WiFi + Toggl token)
-    if (receivedSSID.length() > 0 && receivedPassword.length() > 0 && receivedToken.length() > 0) {
+    // Check if we have ALL required configuration (WiFi + Toggl token + workspace ID + project IDs)
+    if (receivedSSID.length() > 0 && receivedPassword.length() > 0 && 
+        receivedToken.length() > 0 && receivedWorkspace.length() > 0 && projectIdsReceived) {
         configComplete = true;
-        Serial.println("Minimum configuration complete! Ready to test WiFi connection.");
+        Serial.println("FULL configuration complete! Ready to test WiFi connection.");
         if (statusChar) {
             statusChar->writeValue("config_complete");
         }
+    } else {
+        Serial.print("Configuration progress: SSID=");
+        Serial.print(receivedSSID.length() > 0 ? "✓" : "✗");
+        Serial.print(" Password=");
+        Serial.print(receivedPassword.length() > 0 ? "✓" : "✗");
+        Serial.print(" Token=");
+        Serial.print(receivedToken.length() > 0 ? "✓" : "✗");
+        Serial.print(" Workspace=");
+        Serial.print(receivedWorkspace.length() > 0 ? "✓" : "✗");
+        Serial.print(" Projects=");
+        Serial.println(projectIdsReceived ? "✓" : "✗");
     }
 }
 
@@ -349,4 +384,10 @@ String getWorkspaceId() {
 
 const int* getProjectIds() {
     return receivedProjectIds;
+}
+
+extern "C" void updateBLEStatus(const char* status) {
+    if (statusChar) {
+        statusChar->writeValue(status);
+    }
 }

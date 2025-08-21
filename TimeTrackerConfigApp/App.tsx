@@ -31,9 +31,22 @@ export default function App() {
   };
 
   const handleDisconnected = () => {
-    setIsConnected(false);
-    setConnectedDeviceName('');
-    setCurrentScreen('scanner');
+    console.log('App: Disconnection reported, waiting 1 second to verify...');
+    
+    // Don't immediately navigate away - wait to see if it's a false positive
+    // during configuration transmission
+    setTimeout(() => {
+      if (currentScreen !== 'config') {
+        // If we're not in config screen, handle disconnection normally
+        setIsConnected(false);
+        setConnectedDeviceName('');
+        setCurrentScreen('scanner');
+      } else {
+        // If we're in config screen, only navigate away if still disconnected
+        console.log('App: Delayed disconnection check - still on config screen');
+        // For now, don't auto-navigate during config to prevent interruption
+      }
+    }, 1000);
   };
 
   const handleError = (error: string) => {
@@ -42,20 +55,17 @@ export default function App() {
   };
 
   const handleConfigurationSent = () => {
-    Alert.alert(
-      'Configuration Complete',
-      'Your TimeTracker device has been configured successfully! You can now start using it.',
-      [
-        {
-          text: 'Done',
-          onPress: () => {
-            setCurrentScreen('scanner');
-            // Optionally disconnect after successful configuration
-            // handleDisconnected();
-          }
-        }
-      ]
-    );
+    // Configuration is complete, device is transitioning to WiFi mode
+    // The device will remain discoverable for future configurations
+    console.log('Configuration complete - returning to scanner for future device discovery');
+    setCurrentScreen('scanner');
+    
+    // Reset connection state as device may disconnect during WiFi transition
+    // but don't force disconnection - let it happen naturally
+    setTimeout(() => {
+      setIsConnected(false);
+      setConnectedDeviceName('');
+    }, 3000); // Allow time for graceful transition
   };
 
   const handleBackToScanner = () => {

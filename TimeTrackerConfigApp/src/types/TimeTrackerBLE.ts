@@ -53,4 +53,5 @@ export type DeviceStatus =
   | 'workspace_received'
   | 'projects_received'
   | 'config_complete'
+  | 'config_success'
   | 'error';
