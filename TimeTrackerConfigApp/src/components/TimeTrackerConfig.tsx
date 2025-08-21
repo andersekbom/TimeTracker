@@ -40,10 +40,6 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
 
   // Provider Configuration from Setup
   const [providerConfig, setProviderConfig] = useState<ProviderConfiguration | null>(null);
-  const [togglToken, setTogglToken] = useState('');
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [testingToggl, setTestingToggl] = useState(false);
-  const [togglValid, setTogglValid] = useState<boolean | null>(null);
   const [hasProviderSetup, setHasProviderSetup] = useState(false);
 
   // Project IDs for each orientation
@@ -149,7 +145,7 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
 
 
   const handleSendConfiguration = async () => {
-    const validation = validateConfiguration(wifiSSID, wifiPassword, togglToken, workspaceId, projectIds);
+            const validation = validateConfiguration(wifiSSID, wifiPassword);
     if (!validation.isValid) {
       Alert.alert('Configuration Error', validation.error!);
       return;
@@ -163,7 +159,7 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
     setIsSending(true);
 
     try {
-      const config = buildConfiguration(wifiSSID, wifiPassword, togglToken, workspaceId, projectIds);
+      const config = buildConfiguration(wifiSSID, wifiPassword, selectedProviderId);
       
       // Subscribe to status updates to monitor configuration progress
       const statusPromise = new Promise<void>((resolve, reject) => {
@@ -329,57 +325,6 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
           />
         </View>
 
-        {/* Toggl Configuration */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Toggl Integration</Text>
-          
-          <InputWithScan
-            label="API Token"
-            required
-            value={togglToken}
-            onChangeText={setTogglToken}
-            placeholder="Enter Toggl API token"
-            onScan={() => handleQRScanRequest('toggl-token')}
-          />
-
-        <InputWithScan
-          label="Workspace ID"
-          required
-          value={workspaceId}
-          onChangeText={setWorkspaceId}
-          placeholder="Enter workspace ID (number)"
-          keyboardType="numeric"
-          onScan={() => handleQRScanRequest('workspace-id')}
-        />
-        <TouchableOpacity
-          style={styles.testButton}
-          onPress={async () => {
-            setTestingToggl(true);
-            const result = await validateTogglCredentials(togglToken, workspaceId);
-            setTestingToggl(false);
-            setTogglValid(result.isValid);
-          }}
-          disabled={testingToggl}
-        >
-          {testingToggl ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.testButtonText}>Test Toggl Credentials</Text>
-          )}
-        </TouchableOpacity>
-        {togglValid !== null && (
-          <View style={styles.validationResult}>
-            <Text style={togglValid ? styles.valid : styles.invalid}>
-              {togglValid ? '✓' : '✕'}
-            </Text>
-          </View>
-        )}
-        </View>
-
-        {/* Project Mapping */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
 
         {/* Send Configuration Button */}
         <View style={styles.buttonContainer}>
