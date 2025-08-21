@@ -332,56 +332,60 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>Project IDs by Orientation</Text>
-        
-        <TouchableOpacity
-          style={styles.scanAllButton}
-          onPress={() => qrScanner.openQRScanner('project-ids')}
-        >
-          <Text style={styles.scanAllButtonText}>📱 Scan All Project IDs</Text>
-        </TouchableOpacity>
-        
-        {orientations.map(({ key, label, scanKey }) => (
-          <View key={key}>
-            <InputWithScan
-              label={projectNames[key]
-                ? `${label} - ${projectNames[key]}`
-                : label
-              }
-              value={projectIdsForm.getFieldValue(key)}
-              onChangeText={(value) => projectIdsForm.setValue(key, value)}
-              placeholder="Project ID (optional)"
-              keyboardType="numeric"
-              onScan={() => qrScanner.openQRScanner(scanKey as any)}
-              scanButtonText="QR"
-            />
-          </View>
-        ))}
+        {verificationResult?.isValid && (
+          <>
+            <Text style={styles.sectionTitle}>Project IDs by Orientation</Text>
 
-        {/* Fetch project names for entered IDs */}
-        <TouchableOpacity
-          style={[styles.scanAllButton, isFetchingProjects && styles.saveButtonDisabled]}
-          onPress={handleFetchProjectNames}
-          disabled={isFetchingProjects}
-        >
-          {isFetchingProjects ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.scanAllButtonText}>Fetch Project Names</Text>
-          )}
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.scanAllButton}
+              onPress={() => qrScanner.openQRScanner('project-ids')}
+            >
+              <Text style={styles.scanAllButtonText}>📱 Scan All Project IDs</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} 
-          onPress={handleSave}
-          disabled={isSaving}
-        >
-          {isSaving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Configuration</Text>
-          )}
-        </TouchableOpacity>
+            {orientations.map(({ key, label, scanKey }) => (
+              <View key={key}>
+                <InputWithScan
+                  label={projectNames[key]
+                    ? `${label} - ${projectNames[key]}`
+                    : label
+                  }
+                  value={projectIdsForm.getFieldValue(key)}
+                  onChangeText={(value) => projectIdsForm.setValue(key, value)}
+                  placeholder="Project ID (optional)"
+                  keyboardType="numeric"
+                  onScan={() => qrScanner.openQRScanner(scanKey as any)}
+                  scanButtonText="QR"
+                />
+              </View>
+            ))}
+
+            {/* Fetch project names for entered IDs */}
+            <TouchableOpacity
+              style={[styles.scanAllButton, isFetchingProjects && styles.saveButtonDisabled]}
+              onPress={handleFetchProjectNames}
+              disabled={isFetchingProjects}
+            >
+              {isFetchingProjects ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.scanAllButtonText}>Fetch Project Names</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save Configuration</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
 
       {/* QR Code Scanner Modal */}
