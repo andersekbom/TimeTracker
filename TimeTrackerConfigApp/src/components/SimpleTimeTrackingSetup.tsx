@@ -52,6 +52,8 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   });
 
   // Load provider and set default values
+  // Load or initialize form defaults when the providerId changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const selectedProvider = providerRegistry.getProvider(providerId);
     if (selectedProvider) {
@@ -96,7 +98,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
       }
     })();
     }
-  }, [providerId, credentialsForm, projectIdsForm]);
+  }, [providerId]);
 
   // QR Scanner is handled by the hook
   const onQRScanResult = (data: string) => {
