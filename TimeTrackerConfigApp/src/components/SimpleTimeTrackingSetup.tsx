@@ -36,6 +36,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
   const [provider, setProvider] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{isValid: boolean; message: string} | null>(null);
   // List of available projects fetched after verification
   const [availableProjects, setAvailableProjects] = useState<ProjectInfo[]>([]);
@@ -67,12 +68,20 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     (async () => {
       const allConfigs = await providerStorage.loadAllConfigurations();
       const existingConfig = allConfigs[providerId];
+      console.log('Checking for existing config:', existingConfig ? 'found' : 'not found');
+      
       if (existingConfig) {
+        console.log('Loading existing configuration for', providerId);
+        // Load existing configuration
         credentialsForm.setValues({
           apiToken: existingConfig.credentials.apiToken,
           workspaceId: existingConfig.workspaceId,
         });
         projectIdsForm.setValues(existingConfig.projectIds);
+        
+        // Load projects for existing verified configuration
+        console.log('About to load projects for existing config...');
+        await loadProjectsForExistingConfig(existingConfig, selectedProvider);
         return;
       }
 
@@ -103,6 +112,42 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     })();
     }
   }, [providerId]);
+
+  // Load projects for existing verified configuration without re-verifying API
+  const loadProjectsForExistingConfig = async (config: ProviderConfiguration, selectedProvider: any) => {
+    console.log('loadProjectsForExistingConfig called with:', { providerId, selectedProvider: !!selectedProvider });
+    
+    if (!selectedProvider) {
+      console.warn('No provider available yet, cannot load projects');
+      return;
+    }
+
+    console.log('Loading projects for existing verified configuration for', providerId);
+    
+    // Set verification result to show the configuration is already verified
+    setVerificationResult({
+      isValid: true,
+      message: `Previously verified ${selectedProvider.name} configuration loaded successfully.`
+    });
+
+    // Load available projects
+    try {
+      setIsVerifying(true);
+      console.log('Fetching projects with credentials and workspace:', config.workspaceId);
+      const projects = await selectedProvider.getProjects(config.credentials, config.workspaceId);
+      setAvailableProjects(projects);
+      console.log(`Successfully loaded ${projects.length} projects for project selection:`, projects.map(p => p.name));
+    } catch (error) {
+      console.error('Could not load projects from saved configuration:', error);
+      // If projects can't be loaded, show a message but don't mark verification as failed
+      setVerificationResult({
+        isValid: true,
+        message: `Configuration loaded, but projects couldn't be fetched. You may need to verify the connection manually.`
+      });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   // QR Scanner is handled by the hook
   const onQRScanResult = (data: string) => {
@@ -236,6 +281,47 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
     }
   };
 
+  const handleDeleteConfiguration = async () => {
+    Alert.alert(
+      'Delete Configuration',
+      `Are you sure you want to delete the ${provider?.name} configuration? This cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            
+            const result = await ErrorHandler.handleAsync(async () => {
+              await providerStorage.clearConfiguration(providerId);
+            }, 'delete-configuration');
+
+            setIsDeleting(false);
+
+            if (result.success) {
+              // Reset form state to restart setup flow
+              credentialsForm.setValues({});
+              projectIdsForm.setValues(DEFAULT_VALUES.PROJECT_IDS);
+              setVerificationResult(null);
+              setAvailableProjects([]);
+              
+              Alert.alert(
+                'Configuration Deleted',
+                'The provider configuration has been deleted. You can now set up a new configuration.',
+                [{ text: 'OK', style: 'default' }]
+              );
+            } else {
+              ErrorHandler.showAlert(result.error?.message || 'Failed to delete configuration', 'Delete Error');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const orientations = DEFAULT_VALUES.PROJECT_ORIENTATIONS;
 
@@ -285,7 +371,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
               <Text style={styles.verifyButtonText}>Verifying...</Text>
             </View>
           ) : (
-            <Text style={styles.verifyButtonText}>🔍 Verify API Connection</Text>
+            <Text style={styles.verifyButtonText}>Verify API Connection</Text>
           )}
         </TouchableOpacity>
 
@@ -336,6 +422,24 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
               )}
             </TouchableOpacity>
           </>
+        )}
+
+        {/* Delete Configuration Button - always visible if we have any config */}
+        {(verificationResult || credentialsForm.getFieldValue('apiToken') || credentialsForm.getFieldValue('workspaceId')) && (
+          <TouchableOpacity
+            style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
+            onPress={handleDeleteConfiguration}
+            disabled={isDeleting}
+          >
+            {isDeleting ? (
+              <View style={styles.deletingContainer}>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.deleteButtonText}>Deleting...</Text>
+              </View>
+            ) : (
+              <Text style={styles.deleteButtonText}>Delete Configuration</Text>
+            )}
+          </TouchableOpacity>
         )}
       </ScrollView>
 
@@ -493,5 +597,25 @@ const styles = StyleSheet.create({
   },
   verificationErrorText: {
     color: '#C62828',
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  deleteButtonDisabled: {
+    backgroundColor: '#CCCCCC',
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deletingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

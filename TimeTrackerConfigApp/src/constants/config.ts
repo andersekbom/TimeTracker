@@ -30,14 +30,14 @@ export const DEFAULT_VALUES = {
 // For now, they're empty by default - developers can set them manually if needed
 export const TEST_CONFIG = {
   TOGGL: {
-    API_TOKEN: '',
-    WORKSPACE_ID: '',
+    API_TOKEN: '8512ae2df80f50ecaa5a7e0c4c96cc57',
+    WORKSPACE_ID: '20181448',
     PROJECT_IDS: {
-      faceDown: 0,
-      leftSide: 0,
-      rightSide: 0,
-      frontEdge: 0,
-      backEdge: 0,
+      faceDown: 212267804,
+      leftSide: 212267805,
+      rightSide: 212267806,
+      frontEdge: 212267807,
+      backEdge: 212267809,
     },
   },
   CLOCKIFY: {

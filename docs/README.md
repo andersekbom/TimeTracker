@@ -101,7 +101,7 @@ Each cube orientation corresponds to a different work mode:
 
 | Orientation | Default Use Case | LED Color (RP2040) | Blink Pattern (33 IoT) |
 |-------------|-----------------|-------------------|----------------------|
-| Face Up | Break Time | White | 1 blink |
+| Face Up | Timer Stopped | White | 1 blink |
 | Face Down | Deep Work | Red | 2 blinks |
 | Left Side | Meetings | Blue | 3 blinks |
 | Right Side | Email/Admin | Yellow | 4 blinks |

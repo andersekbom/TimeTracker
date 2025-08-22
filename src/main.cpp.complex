@@ -237,12 +237,12 @@ void loop() {
             // Print orientation info for debugging
             orientationDetector.printOrientation(newOrientation, accelX, accelY, accelZ);
             
-            // Start new timer if orientation is known and not break time
+            // Start new timer if orientation is known and not timer stopped
             if (newOrientation != UNKNOWN && newOrientation != FACE_UP) {
                 String description = orientationDetector.getOrientationName(newOrientation);
                 togglAPI.startTimeEntry(newOrientation, description);
             } else if (newOrientation == FACE_UP) {
-                if (Serial) Serial.println("Break time - timer stopped, no new entry started");
+                if (Serial) Serial.println("Timer stopped, no new entry started");
             }
         }
     }

@@ -219,7 +219,7 @@ void checkConfigComplete() {
 **Orientation Mapping**:
 ```cpp
 enum Orientation {
-    FACE_UP,    // Break time (stops timer)
+    FACE_UP,    // Stops timer
     FACE_DOWN,  // Project 1 (red LED/1 blink)
     LEFT_SIDE,  // Project 2 (blue LED/2 blinks)
     RIGHT_SIDE, // Project 3 (yellow LED/3 blinks)
@@ -403,7 +403,7 @@ Arduino Device                 Mobile App
 - **Format**: 6 × 32-bit integers (little-endian)
 - **Size**: 24 bytes total
 - **Order**: [FACE_UP, FACE_DOWN, LEFT_SIDE, RIGHT_SIDE, FRONT_EDGE, BACK_EDGE]
-- **FACE_UP**: Always 0 (break time)
+- **FACE_UP**: Always 0 (Timer Stopped)
 
 #### Status Notifications
 - **Type**: String characteristics with notifications enabled

@@ -28,6 +28,7 @@ Orientation OrientationDetector::detectOrientation(float accelX, float accelY, f
 }
 
 Orientation OrientationDetector::determineOrientation(float x, float y, float z) const {
+    //TODO: Add checks for other axis to make detection more solid:  && abs(x) < threshold && abs(y) < threshold
     // Z-axis: Face up/down
     if (z > threshold) {
         return FACE_UP;

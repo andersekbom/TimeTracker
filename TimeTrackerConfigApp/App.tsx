@@ -31,22 +31,16 @@ export default function App() {
   };
 
   const handleDisconnected = () => {
-    console.log('App: Disconnection reported, waiting 1 second to verify...');
+    console.log('App: Disconnection reported');
     
-    // Don't immediately navigate away - wait to see if it's a false positive
-    // during configuration transmission
-      setTimeout(() => {
-        if (currentScreen !== 'config') {
-          // If we're not in config screen, handle disconnection normally
-          setIsConnected(false);
-          // Preserve device name so users can reconnect without re-scanning
-          setCurrentScreen('scanner');
-        } else {
-          // If we're in config screen, only navigate away if still disconnected
-          console.log('App: Delayed disconnection check - still on config screen');
-          // Do not auto-navigate during config to prevent interruption
-        }
-      }, 1000);
+    // Always reset connection state when disconnection is reported
+    setIsConnected(false);
+    setConnectedDeviceName('');
+    
+    // Don't auto-navigate during config to prevent interruption
+    if (currentScreen !== 'config') {
+      setCurrentScreen('scanner');
+    }
   };
 
   const handleError = (error: string) => {
@@ -54,18 +48,29 @@ export default function App() {
     Alert.alert('BLE Error', error);
   };
 
-  const handleConfigurationSent = () => {
+  const handleConfigurationSent = async () => {
     // Configuration is complete, device is transitioning to WiFi mode
-    // The device will remain discoverable for future configurations
-    console.log('Configuration complete - returning to scanner for future device discovery');
-    setCurrentScreen('scanner');
+    // Clear device list for fresh scanning experience
+    console.log('Configuration complete - returning to scanner and clearing device list');
     
-    // Reset connection state as device may disconnect during WiFi transition
-    // but don't force disconnection - let it happen naturally
-    setTimeout(() => {
-      setIsConnected(false);
-      setConnectedDeviceName('');
-    }, 3000); // Allow time for graceful transition
+    // Force BLE disconnection to clear any stale connection state
+    try {
+      const { TimeTrackerBLEService } = await import('./src/services/BLEService');
+      const bleService = TimeTrackerBLEService.getInstance();
+      if (bleService.isConnected()) {
+        await bleService.disconnect();
+      }
+    } catch (error) {
+      console.log('Error during forced disconnect:', error);
+    }
+    
+    // Reset all connection state immediately to prevent device from being re-added to list
+    setIsConnected(false);
+    setConnectedDeviceName('');
+    setSelectedDevice(null);
+    
+    setCurrentScreen('scanner');
+    setRefreshTrigger(prev => prev + 1); // Force BLEScanner to remount and clear devices
   };
 
   const handleBackToScanner = () => {
@@ -97,6 +102,7 @@ export default function App() {
       {currentScreen === 'scanner' ? (
         <View style={styles.scannerContainer}>
           <BLEScanner 
+            key={`${refreshTrigger}-${currentScreen}`} // Force remount when returning from configuration or setup
             onDeviceSelected={handleDeviceSelected}
             onConnected={handleConnected}
             onDisconnected={handleDisconnected}

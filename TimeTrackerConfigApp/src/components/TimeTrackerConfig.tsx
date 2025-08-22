@@ -21,6 +21,7 @@ import { providerStorage } from '../services/ProviderStorage';
 import { providerRegistry } from '../services/ProviderRegistry';
 import { ProviderConfiguration } from '../types/TimeTrackingProvider';
 import { validateConfiguration, buildConfiguration } from '../utils/configValidation';
+import { QRScanField, handleQRScanResult } from '../utils/qrScanHandlers';
 import { Picker } from '@react-native-picker/picker';
 
 interface TimeTrackerConfigProps {
@@ -56,22 +57,15 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [qrScanField, setQrScanField] = useState<QRScanField | null>(null);
   const [showWiFiPicker, setShowWiFiPicker] = useState(false);
+  const [showConfigComplete, setShowConfigComplete] = useState(false);
   const [bleService] = useState(() => TimeTrackerBLEService.getInstance());
 
   // Monitor BLE connection state
   useEffect(() => {
     const handleConnectionStateChange = (connected: boolean, deviceName?: string) => {
       if (!connected) {
-        Alert.alert(
-          'Connection Lost',
-          'The connection to the TimeTracker device was lost. Please go back and reconnect.',
-          [
-            {
-              text: 'Go Back',
-              onPress: onBack,
-            }
-          ]
-        );
+        // Device disconnected - just go back to scanner without alert
+        onBack();
       }
     };
 
@@ -93,14 +87,10 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
           setProviderConfig(storedProviderConfig);
           setHasProviderSetup(true);
           
-          // Use provider configuration to pre-fill Toggl fields
+          // Use provider configuration to pre-fill project IDs
           const provider = providerRegistry.getProvider(storedProviderConfig.providerId);
           if (provider) {
             const deviceConfig = provider.buildDeviceConfiguration(storedProviderConfig);
-            if (deviceConfig.toggl) {
-              setTogglToken(deviceConfig.toggl.apiToken || '');
-              setWorkspaceId(String(deviceConfig.toggl.workspaceId || ''));
-            }
             if (deviceConfig.projects) {
               setProjectIds({
                 faceDown: deviceConfig.projects.faceDown || 0,
@@ -122,10 +112,8 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
           setWifiSSID(existingConfig.wifi.ssid);
           setWifiPassword(existingConfig.wifi.password);
           
-          // Only use device Toggl config if no provider setup exists
+          // Only use device project config if no provider setup exists
           if (!storedProviderConfig) {
-            setTogglToken(existingConfig.toggl.apiToken);
-            setWorkspaceId(existingConfig.toggl.workspaceId);
             setProjectIds(existingConfig.projects);
           }
           
@@ -145,7 +133,32 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
 
 
   const handleSendConfiguration = async () => {
-            const validation = validateConfiguration(wifiSSID, wifiPassword);
+    // Validate that we have provider configuration
+    if (!providerConfig) {
+      Alert.alert('Configuration Error', 'No time tracking provider configured. Please run Setup first.');
+      return;
+    }
+
+    const provider = providerRegistry.getProvider(providerConfig.providerId);
+    if (!provider) {
+      Alert.alert('Configuration Error', 'Invalid provider configuration.');
+      return;
+    }
+
+    const deviceConfig = provider.buildDeviceConfiguration(providerConfig);
+    if (!deviceConfig.toggl) {
+      Alert.alert('Configuration Error', 'Provider configuration is missing Toggl credentials.');
+      return;
+    }
+
+    // Validate complete configuration
+    const validation = validateConfiguration(
+      wifiSSID, 
+      wifiPassword, 
+      deviceConfig.toggl.apiToken, 
+      deviceConfig.toggl.workspaceId, 
+      projectIds
+    );
     if (!validation.isValid) {
       Alert.alert('Configuration Error', validation.error!);
       return;
@@ -159,55 +172,21 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
     setIsSending(true);
 
     try {
-      const config = buildConfiguration(wifiSSID, wifiPassword, selectedProviderId);
-      
-      // Subscribe to status updates to monitor configuration progress
-      const statusPromise = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Configuration timeout - no success confirmation received'));
-        }, 15000); // 15 second timeout
-        
-        bleService.subscribeToStatus(
-          (status) => {
-            console.log('Device status update:', status);
-            if (status === 'config_success') {
-              clearTimeout(timeout);
-              console.log('Configuration confirmed successful by device!');
-              resolve();
-            }
-          },
-          (error) => {
-            clearTimeout(timeout);
-            reject(error);
-          }
-        ).catch(error => {
-          clearTimeout(timeout);
-          reject(error);
-        });
-      });
-      
-      // Send configuration and wait for device confirmation
-      await bleService.sendConfiguration(config);
-      console.log('Configuration sent, waiting for device confirmation...');
-      
-      // Wait for device to confirm successful configuration
-      await statusPromise;
-      
-      Alert.alert(
-        'Configuration Complete',
-        'Your TimeTracker device has been configured successfully and is now connecting to WiFi!',
-        [
-          {
-            text: 'Done',
-            onPress: () => {
-              // Give device time to start WiFi before potential disconnection
-              setTimeout(() => {
-                onConfigurationSent();
-              }, 1000);
-            },
-          },
-        ]
+      // Build configuration using provider data
+      const config = buildConfiguration(
+        wifiSSID, 
+        wifiPassword, 
+        deviceConfig.toggl.apiToken, 
+        deviceConfig.toggl.workspaceId, 
+        projectIds
       );
+      
+      // Send configuration to device
+      await bleService.sendConfiguration(config);
+      console.log('Configuration sent successfully!');
+      
+      // Show in-app confirmation instead of alert
+      setShowConfigComplete(true);
       
     } catch (error) {
       console.error('Configuration error:', error);
@@ -236,8 +215,6 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
     if (qrScanField) {
       handleQRScanResult(data, qrScanField, {
         setWifiPassword,
-        setTogglToken,
-        setWorkspaceId,
         updateProjectId,
         setProjectIds,
       }, projectIds);
@@ -386,6 +363,31 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
             currentSSID={wifiSSID}
           />
         </SafeAreaView>
+      </Modal>
+
+      {/* Configuration Complete Modal */}
+      <Modal
+        visible={showConfigComplete}
+        animationType="fade"
+        transparent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmationBox}>
+            <Text style={styles.confirmationTitle}>✅ Configuration Complete</Text>
+            <Text style={styles.confirmationMessage}>
+              Your TimeTracker device has been configured and will now switch to WiFi mode for time tracking!
+            </Text>
+            <TouchableOpacity
+              style={styles.confirmationButton}
+              onPress={() => {
+                setShowConfigComplete(false);
+                onConfigurationSent();
+              }}
+            >
+              <Text style={styles.confirmationButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -584,5 +586,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#155724',
     lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  confirmationBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    minWidth: 280,
+    maxWidth: 320,
+  },
+  confirmationTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  confirmationMessage: {
+    fontSize: 16,
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  confirmationButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  confirmationButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

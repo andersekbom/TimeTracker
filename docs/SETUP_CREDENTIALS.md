@@ -44,7 +44,7 @@ const int workspaceId = 1234567;
 
 // Set your actual project IDs for each orientation
 const int orientationProjectIds[6] = {
-    0,          // FACE_UP - break time (always 0)
+    0,          // FACE_UP - Timer stopped (always 0)
     12345678,   // FACE_DOWN - your project ID
     12345679,   // LEFT_SIDE - your project ID
     12345680,   // RIGHT_SIDE - your project ID

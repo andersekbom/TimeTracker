@@ -10,7 +10,7 @@ const int workspaceId = 0; // YOUR_WORKSPACE_ID
 
 // Project names for each orientation (for display purposes)
 const char* projectNames[6] = {
-    "Break Time",         // FACE_UP (stops timers)
+    "Timer stopped",      // FACE_UP (stops timers)
     "Face Down Project",  // FACE_DOWN  
     "Left Side Project",  // LEFT_SIDE
     "Right Side Project", // RIGHT_SIDE
@@ -19,9 +19,9 @@ const char* projectNames[6] = {
 };
 
 // Direct Toggl project ID mapping for each orientation
-// FACE_UP = 0 (disabled, break time), others set to your actual project IDs
+// FACE_UP = 0 (disabled, timer stopped), others set to your actual project IDs
 const int orientationProjectIds[6] = {
-    0,          // FACE_UP - disabled (break time)
+    0,          // FACE_UP - disabled (timer stopped)
     0,          // FACE_DOWN - set to your project ID
     0,          // LEFT_SIDE - set to your project ID  
     0,          // RIGHT_SIDE - set to your project ID

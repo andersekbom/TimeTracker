@@ -253,7 +253,7 @@ export class TimeTrackerBLEService {
 
       // Send Project IDs (6 integers as 24-byte array)
       const projectIds = [
-        0, // FACE_UP (break time)
+        0, // FACE_UP (Timer stopped)
         config.projects.faceDown,
         config.projects.leftSide,
         config.projects.rightSide,

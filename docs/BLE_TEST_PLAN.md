@@ -136,7 +136,7 @@ The test framework validates all 12 BLE characteristics:
 
 ### Project IDs
 - **Valid Array**: 6 project IDs, each 0 ≤ ID < 1,000,000,000
-- **Special Cases**: 0 = break time, negative values invalid
+- **Special Cases**: 0 = timer stopped, negative values invalid
 - **Format**: Comma-separated string transmission
 
 ## Running the Tests

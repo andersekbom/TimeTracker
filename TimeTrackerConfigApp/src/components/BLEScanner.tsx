@@ -4,12 +4,14 @@ import {
   Text,
   TouchableOpacity,
   FlatList,
+  ScrollView,
   Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { TimeTrackerBLEService } from '../services/BLEService';
 import { TimeTrackerDevice } from '../types/TimeTrackerBLE';
+import { providerStorage } from '../services/ProviderStorage';
 
 interface BLEScannerProps {
   onDeviceSelected?: (device: TimeTrackerDevice) => void;
@@ -37,7 +39,29 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<TimeTrackerDevice[]>([]);
   const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
+  const [hasProviderSetup, setHasProviderSetup] = useState(false);
+  const [isLoadingProviderStatus, setIsLoadingProviderStatus] = useState(true);
   const [bleService] = useState(() => TimeTrackerBLEService.getInstance());
+
+  // Check if provider is configured on mount and when component updates
+  useEffect(() => {
+    const checkProviderSetup = async () => {
+      setIsLoadingProviderStatus(true);
+      try {
+        const providerConfig = await providerStorage.loadConfiguration();
+        const hasProvider = !!providerConfig;
+        console.log('Provider setup status:', hasProvider ? 'configured' : 'not configured');
+        setHasProviderSetup(hasProvider);
+      } catch (error) {
+        console.error('Error checking provider setup:', error);
+        setHasProviderSetup(false);
+      } finally {
+        setIsLoadingProviderStatus(false);
+      }
+    };
+    
+    checkProviderSetup();
+  }, []); // Dependencies removed to allow manual refresh via key prop
 
   useEffect(() => {
     // Subscribe to connection state changes
@@ -48,31 +72,13 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
         onConnected(deviceName);
       } else {
         onDisconnected();
-        // Re-add the disconnected device (by name) to the list so the user can reconnect
-        if (deviceName && selectedDevice && selectedDevice.name === deviceName) {
-          setDevices(prev => prev.some(d => d.id === selectedDevice.id)
-            ? prev
-            : [selectedDevice, ...prev]
-          );
-        }
-        // No auto-scan: list still contains the last known device for reconnection
+        // Don't auto-add disconnected devices - user must scan to see devices
       }
     };
 
     bleService.onConnectionStateChange(handleConnectionStateChange);
 
-    // If we already have a connected device, make sure it's in the list
-    if (isConnected && connectedDeviceName && selectedDevice) {
-      setDevices(prev => {
-        // Check if the connected device is already in the list
-        const exists = prev.find(d => d.name === connectedDeviceName);
-        if (!exists) {
-          // Add the connected device to the list
-          return [selectedDevice, ...prev];
-        }
-        return prev;
-      });
-    }
+    // Don't auto-populate device list on mount - wait for user to scan
 
     return () => {
       // Clean up the specific callback when unmounting
@@ -82,22 +88,14 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
     };
   }, [bleService, onConnected, onDisconnected, isConnected, connectedDeviceName, selectedDevice]);
 
-  // Separate effect to handle initial load when coming back from config screen
-  useEffect(() => {
-    if (isConnected && connectedDeviceName && selectedDevice) {
-      setDevices(prev => {
-        // Check if the connected device is already in the list
-        const exists = prev.find(d => d.name === connectedDeviceName);
-        if (!exists) {
-          // Add the connected device to the list
-          return [selectedDevice];
-        }
-        return prev;
-      });
-    }
-  }, [isConnected, connectedDeviceName, selectedDevice]);
+  // Don't auto-populate device list - user must explicitly scan
 
   const startScan = async () => {
+    if (!hasProviderSetup) {
+      Alert.alert('Setup Required', 'Please set up a time tracking provider first before scanning for devices.');
+      return;
+    }
+    
     try {
       setIsScanning(true);
       
@@ -136,11 +134,6 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
     setIsScanning(false);
   };
 
-  const handleDevicePress = (device: TimeTrackerDevice) => {
-    stopScan();
-    onDeviceSelected?.(device);
-  };
-
   const handleConnect = async (device: TimeTrackerDevice) => {
     setConnectingDeviceId(device.id);
     
@@ -170,6 +163,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
 
   const renderDevice = ({ item }: { item: TimeTrackerDevice }) => {
     const isConnecting = connectingDeviceId === item.id;
+    // Only show connected state based on app props - trust the parent component's state management
     const isThisDeviceConnected = isConnected && connectedDeviceName === item.name;
     
     
@@ -180,7 +174,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
       ]}>
         <View style={styles.deviceInfo}>
           <Text style={styles.deviceName}>{item.name}</Text>
-          <Text style={styles.deviceId}>ID: {item.id.substring(0, 8)}...</Text>
+          <Text style={styles.deviceId}>MAC: {item.id}</Text>
           {item.rssi && (
             <Text style={styles.deviceRssi}>Signal: {item.rssi} dBm</Text>
           )}
@@ -237,57 +231,80 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
   const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.title}>Time Tracker Redux</Text>
-        <View style={styles.headerActions}>
-
+      
+      {/* Provider Setup Block */}
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionTitle}>Provider Setup</Text>
         {onSetupTimeTracking && (
           <TouchableOpacity
-            style={styles.setupButton}
+            style={[
+              styles.setupButton, 
+              hasProviderSetup && styles.setupButtonComplete
+            ]}
             onPress={onSetupTimeTracking}
+            disabled={isLoadingProviderStatus}
           >
-            <Text style={styles.setupText}>Setup</Text>
+            <Text style={styles.setupText}>
+              {isLoadingProviderStatus ? 'Checking...' : 
+               hasProviderSetup ? '✓ Tracking Provider Configured' : 'Set Up Tracking Provider'}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
-      <View style={styles.headerActions}>
 
+      {/* Device Scanning Block */}
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionTitle}>Device Configuration</Text>
+        {!hasProviderSetup && (
+          <Text style={styles.sectionSubtitle}>
+            Complete provider setup first to enable scanning
+          </Text>
+        )}
         <TouchableOpacity
           style={[
             styles.scanButton,
-            isScanning && styles.scanButtonActive
+            isScanning && styles.scanButtonActive,
+            (!hasProviderSetup || isLoadingProviderStatus) && styles.scanButtonDisabled
           ]}
           onPress={isScanning ? stopScan : startScan}
-          disabled={isScanning}
+          disabled={isScanning || !hasProviderSetup || isLoadingProviderStatus}
         >
           {isScanning && <ActivityIndicator color="white" style={styles.spinner} />}
-          <Text style={styles.scanButtonText}>
+          <Text style={[
+            styles.scanButtonText,
+            (!hasProviderSetup || isLoadingProviderStatus) && styles.scanButtonTextDisabled
+          ]}>
             {isScanning ? 'Scanning...' : 'Start Scan'}
           </Text>
         </TouchableOpacity>
 
+       
+        {devices.length > 0 && (
+          <View style={styles.devicesContainer}>
+            {devices.map((device, index) => (
+              <View key={device.id} style={index === devices.length - 1 ? styles.lastDeviceItem : undefined}>
+                {renderDevice({ item: device })}
+              </View>
+            ))}
+          </View>
+        )}
 
+        {/* No devices message when scan completed but no devices found */}
+        {!isScanning && devices.length === 0 && hasProviderSetup && (
+          <Text style={styles.noDevicesText}>
+            No configurable devices found. Make sure your TimeTracker is in setup mode and try scanning again.
+          </Text>
+        )}
       </View>
     </View>
   );
 
-  const renderEmptyComponent = () => (
-    <View style={styles.emptyState}>
-        <Text style={styles.emptyText}>
-          {isScanning ? 'Looking for TimeTracker devices...' : 'No devices found. Make sure your TimeTracker is in setup mode.'}
-        </Text>
-    </View>
-  );
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={devices}
-        renderItem={renderDevice}
-        keyExtractor={item => item.id}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={renderEmptyComponent}
-        style={styles.list}
-        contentContainerStyle={devices.length === 0 ? styles.listContentEmpty : styles.listContent}
-      />
+      <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+        {renderHeader()}
+      </ScrollView>
     </View>
   );
 };
@@ -295,23 +312,18 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFFFFF',
   },
   header: {
-    padding: 20,
+    padding: 10,
     paddingTop: 50,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#FFFFFF'
   },
   list: {
     flex: 1,
   },
   listContent: {
-    padding: 16,
+    padding: 8,
   },
   listContentEmpty: {
     flexGrow: 1,
@@ -328,6 +340,29 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'stretch',
   },
+  sectionBlock: {
+    backgroundColor: '#FFFFFF',
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 16,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
   setupButton: {
     backgroundColor: '#147500ff',
     padding: 16,
@@ -335,7 +370,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    marginBottom: 12,
+  },
+  setupButtonComplete: {
+    backgroundColor: '#4CAF50',
   },
   setupText: {
     color: 'white',
@@ -351,36 +388,67 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   scanButtonActive: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#ffb730ff',
+  },
+  scanButtonDisabled: {
+    backgroundColor: '#E0E0E0',
   },
   scanButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
+  scanButtonTextDisabled: {
+    color: '#999999',
+  },
+  scanningIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    gap: 8,
+  },
+  scanningText: {
+    fontSize: 14,
+    color: '#666666',
+    fontStyle: 'italic',
+  },
+  devicesContainer: {
+    marginTop: 16,
+    marginBottom: 0,
+  },
+  devicesHeader: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333333',
+    marginBottom: 12,
+  },
+  lastDeviceItem: {
+    marginBottom: 0,
+  },
+  noDevicesText: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'left',
+    marginTop: 16,
+    lineHeight: 20,
+  },
   spinner: {
     marginRight: 10,
   },
   deviceItem: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 8,
+    backgroundColor: '#F8F8F8',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 0,
     borderWidth: 1,
     borderColor: '#E0E0E0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
     flexDirection: 'row',
     alignItems: 'center',
   },
   deviceItemConnected: {
-    borderColor: '#4CAF50',
-    borderWidth: 2,
-    backgroundColor: '#F1F8E9',
+    backgroundColor: '#d9e9faff',
   },
   deviceInfo: {
     flex: 1,

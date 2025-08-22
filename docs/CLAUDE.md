@@ -67,7 +67,7 @@ Copy `src/Configuration.cpp.template` to `src/Configuration.cpp` and add credent
 ## System Behavior
 
 ### Orientation Mapping
-- **Face Up**: Break time (stops current timer)
+- **Face Up**: Stops current timer
 - **Face Down**: Project 1 (red LED/1 blink)
 - **Left Side**: Project 2 (blue LED/2 blinks)
 - **Right Side**: Project 3 (yellow LED/3 blinks)

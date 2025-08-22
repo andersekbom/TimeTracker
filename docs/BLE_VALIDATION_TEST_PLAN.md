@@ -112,7 +112,7 @@
 
 ### Test 4.2: Orientation Detection
 **Test Each Orientation:**
-- **Face Up**: Break time (stops timer)
+- **Face Up**: Stops timer
 - **Face Down**: Project 1 (configurable ID)
 - **Left Side**: Project 2
 - **Right Side**: Project 3  

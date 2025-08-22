@@ -115,11 +115,14 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
     
     timeEntry["start"] = getCurrentTimeISO();
     timeEntry["duration"] = -1;
-    timeEntry["created_with"] = "CubeToggler";
+    timeEntry["created_with"] = "TimeTracker Redux";
 
     String jsonString;
     serializeJson(timeEntry, jsonString);
 
+    // Set timeout to prevent device hangs
+    client->setTimeout(5000); // 5 second timeout
+    
     client->beginRequest();
     client->post("/api/v9/time_entries");
     client->sendHeader("Content-Type", "application/json");
@@ -131,10 +134,15 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
     client->sendHeader("Content-Length", jsonString.length());
     client->beginBody();
     client->print(jsonString);
+    
+    // Log before potentially blocking operation
+    Serial.println("[TOGGL] Sending HTTP request...");
     client->endRequest();
+    Serial.println("[TOGGL] Request sent, waiting for response...");
 
     int statusCode = client->responseStatusCode();
     String response = client->responseBody();
+    Serial.println("[TOGGL] Response received");
 
     Serial.print("Toggl API startTimeEntry - Status: ");
     Serial.print(statusCode);
@@ -182,6 +190,9 @@ bool TogglAPI::stopCurrentTimeEntry() {
         : String(workspaceId);
     String endpoint = "/api/v9/workspaces/" + wsIdStr + "/time_entries/" + currentTimeEntryId + "/stop";
     
+    // Set timeout to prevent device hangs
+    client->setTimeout(5000); // 5 second timeout
+    
     client->beginRequest();
     client->patch(endpoint);
     client->sendHeader("Content-Type", "application/json");
@@ -189,10 +200,15 @@ bool TogglAPI::stopCurrentTimeEntry() {
         ? runtimeToken
         : String(togglApiToken);
     client->sendHeader("Authorization", "Basic " + base64Encode(token + ":api_token"));
+    
+    // Log before potentially blocking operation  
+    Serial.println("[TOGGL] Sending stop request...");
     client->endRequest();
+    Serial.println("[TOGGL] Stop request sent, waiting for response...");
 
     int statusCode = client->responseStatusCode();
     String response = client->responseBody();
+    Serial.println("[TOGGL] Stop response received");
     
     Serial.print("Toggl API stopTimeEntry - Status: ");
     Serial.print(statusCode);
