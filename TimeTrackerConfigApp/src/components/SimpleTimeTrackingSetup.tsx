@@ -74,8 +74,8 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
         console.log('Loading existing configuration for', providerId);
         // Load existing configuration
         credentialsForm.setValues({
-          apiToken: existingConfig.credentials.apiToken,
-          workspaceId: existingConfig.workspaceId,
+          apiToken: String(existingConfig.credentials.apiToken || ''),
+          workspaceId: String(existingConfig.workspaceId),
         });
         projectIdsForm.setValues(existingConfig.projectIds);
         
@@ -136,7 +136,7 @@ export const SimpleTimeTrackingSetup: React.FC<SimpleTimeTrackingSetupProps> = (
       console.log('Fetching projects with credentials and workspace:', config.workspaceId);
       const projects = await selectedProvider.getProjects(config.credentials, config.workspaceId);
       setAvailableProjects(projects);
-      console.log(`Successfully loaded ${projects.length} projects for project selection:`, projects.map(p => p.name));
+      console.log(`Successfully loaded ${projects.length} projects for project selection:`, projects.map((p: any) => p.name));
     } catch (error) {
       console.error('Could not load projects from saved configuration:', error);
       // If projects can't be loaded, show a message but don't mark verification as failed
