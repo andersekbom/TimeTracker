@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
   ScrollView,
   Alert,
   StyleSheet,
@@ -41,6 +40,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
   const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
   const [hasProviderSetup, setHasProviderSetup] = useState(false);
   const [isLoadingProviderStatus, setIsLoadingProviderStatus] = useState(true);
+  const [connectionUpdateTrigger, setConnectionUpdateTrigger] = useState(0); // Used to trigger re-renders when BLE state changes
   const [bleService] = useState(() => TimeTrackerBLEService.getInstance());
 
   // Check if provider is configured on mount and when component updates
@@ -67,6 +67,13 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
     // Subscribe to connection state changes
       const handleConnectionStateChange = (connected: boolean, deviceName?: string) => {
       setConnectingDeviceId(null);
+      
+      if (__DEV__) {
+        console.log(`BLE connection state changed: connected=${connected}, deviceName=${deviceName || 'null'}`);
+      }
+      
+      // Trigger re-render of device list to update button states
+      setConnectionUpdateTrigger(prev => prev + 1);
 
       if (connected && deviceName) {
         onConnected(deviceName);
@@ -102,12 +109,27 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
       // Clear existing devices to show fresh scan results
       setDevices([]);
       
+      // Debug logging for connection state at scan start
+      if (__DEV__) {
+        const connectedDevice = bleService.getConnectedDevice();
+        console.log(`Starting scan - BLE service connection state: ${connectedDevice?.name || 'null'} (${connectedDevice?.id.substring(0,8) || 'null'}...), parent props: isConnected=${isConnected}, connectedDeviceName=${connectedDeviceName}`);
+      }
+      
       await bleService.scanForDevices(
         (device) => {
+          if (__DEV__) {
+            console.log(`Found device: ${device.name} (${device.id.substring(0,8)}...)`);
+          }
           setDevices(prev => {
             // Avoid duplicates
             if (prev.find(d => d.id === device.id)) {
+              if (__DEV__) {
+                console.log(`Skipping duplicate device: ${device.name}`);
+              }
               return prev;
+            }
+            if (__DEV__) {
+              console.log(`Adding new device to list: ${device.name}`);
             }
             return [...prev, device];
           });
@@ -151,8 +173,14 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
   };
 
   const handleDisconnect = async () => {
+    if (__DEV__) {
+      console.log('User pressed disconnect button - disconnecting...');
+    }
     try {
       await bleService.disconnect();
+      if (__DEV__) {
+        console.log('BLE service disconnect completed - waiting for callback...');
+      }
       // Disconnection state will be updated via callback
     } catch (error) {
       const errorMessage = `Disconnect failed: ${error}`;
@@ -163,14 +191,25 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
 
   const renderDevice = ({ item }: { item: TimeTrackerDevice }) => {
     const isConnecting = connectingDeviceId === item.id;
-    // Only show connected state based on app props - trust the parent component's state management
-    const isThisDeviceConnected = isConnected && connectedDeviceName === item.name;
+    // Verify connection state with BLE service to prevent showing stale connection data
+    const connectedDevice = bleService.getConnectedDevice();
+    const isThisDeviceConnected = connectedDevice && connectedDevice.id === item.id;
+    
+    // Additional check: if BLE service says connected but getConnectedDevice returns null, 
+    // fall back to parent props for device matching
+    const fallbackConnected = !connectedDevice && isConnected && connectedDeviceName === item.name;
+    const finalIsConnected = isThisDeviceConnected || fallbackConnected;
+    
+    // Debug logging to help troubleshoot connection state issues
+    if (__DEV__) {
+      console.log(`Device ${item.name} (${item.id.substring(0,8)}...): connectedDevice=${connectedDevice?.name || 'null'} (${connectedDevice?.id.substring(0,8) || 'null'}...), isThisDeviceConnected=${isThisDeviceConnected}, fallbackConnected=${fallbackConnected}, finalIsConnected=${finalIsConnected}, isConnected(prop)=${isConnected}, connectedDeviceName(prop)=${connectedDeviceName}`);
+    }
     
     
     return (
       <View style={[
         styles.deviceItem, 
-        isThisDeviceConnected && styles.deviceItemConnected
+        finalIsConnected && styles.deviceItemConnected
       ]}>
         <View style={styles.deviceInfo}>
           <Text style={styles.deviceName}>{item.name}</Text>
@@ -178,13 +217,13 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
           {item.rssi && (
             <Text style={styles.deviceRssi}>Signal: {item.rssi} dBm</Text>
           )}
-          {isThisDeviceConnected && (
+          {finalIsConnected && (
             <Text style={styles.connectedStatus}>✓ Connected</Text>
           )}
         </View>
         
         <View style={styles.deviceActions}>
-          {!isConnected ? (
+          {!connectedDevice ? (
             <TouchableOpacity
               style={[
                 styles.actionButton,
@@ -203,7 +242,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
                 <Text style={styles.actionButtonText}>Connect</Text>
               )}
             </TouchableOpacity>
-          ) : isThisDeviceConnected ? (
+          ) : finalIsConnected ? (
             <View style={styles.connectedActions}>
               <TouchableOpacity
                 style={[styles.actionButton, styles.configureButton]}

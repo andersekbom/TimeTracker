@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "OrientationDetector.h"
 
-#if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
+#if defined(ARDUINO_NANO_RP2040_CONNECT)
   #include <WiFiNINA.h>
 #endif
 
@@ -13,7 +13,7 @@ private:
     bool useBuiltinLED;
     
     // Animation state for non-blocking LED patterns
-    enum LEDAnimationState { IDLE, PULSE, FLASH } currentAnimation;
+    enum LEDAnimationState { IDLE, PULSE, FLASH, WIFI_ERROR } currentAnimation;
     unsigned long animationStartTime;
     int animationStep;
     int animationParam1, animationParam2; // For storing animation parameters
@@ -39,6 +39,7 @@ public:
     void showBLEConnecting();     // Yellow (RGB) or fast pulse (single LED)  
     void showBLEConnected();      // Green (RGB) or solid on (single LED)
     void showBLEError();          // Red blink (RGB) or triple flash (single LED)
+    void showWiFiError();         // 2 blinks, wait 1 second, repeat pattern
     void updateBLEAnimation();    // Call in main loop to update animations
     
 private:

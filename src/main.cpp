@@ -13,8 +13,11 @@
   #include <LSM6DS3.h>
 #else
   #include <WiFiNINA.h>
-  #include <WiFiSSLClient.h>30000
-  #include <Arduino_LSM6DSOX.h>
+#endif
+
+// RP2040 specific includes for watchdog reset
+#if defined(ARDUINO_NANO_RP2040_CONNECT)
+  #include <hardware/watchdog.h>
 #endif
 
 // Project modules
@@ -23,18 +26,7 @@
 #include "OrientationDetector.h"
 #include "TogglAPI.h"
 
-// HARDCODED CONFIGURATION - FROM TimeTrackerConfigApp/src/constants/config.ts
-#define WIFI_SSID "eichbaum"
-#define WIFI_PASSWORD "zooweedoobee"  
-#define TOGGL_API_TOKEN "8512ae2df80f50ecaa5a7e0c4c96cc57"
-#define WORKSPACE_ID "20181448"
-// Project IDs for orientations: face_up, face_down, left_side, right_side, front_edge, back_edge
-#define PROJECT_FACE_UP 0
-#define PROJECT_FACE_DOWN 212267804
-#define PROJECT_LEFT_SIDE 212267805  
-#define PROJECT_RIGHT_SIDE 212267806
-#define PROJECT_FRONT_EDGE 212267807
-#define PROJECT_BACK_EDGE 212267809
+// Configuration will be received via BLE from the mobile app
 
 // BLE Configuration Service handled by SimpleBLEConfig.cpp
 
@@ -70,7 +62,7 @@ int* getProjectIds();
 void setup() {
     // Initialize serial communication
     Serial.begin(9600);
-    while (!Serial && millis() < 5000) { delay(100); } // Wait up to 5 seconds for serial
+    // No waiting for serial connection to allow standalone operation
     
     Serial.println("TimeTracker with BLE Configuration");
     Serial.println("Initializing components...");
@@ -83,8 +75,8 @@ void setup() {
         Serial.println("LED controller failed");
     }
     
-    // Initialize IMU
-    if (IMU.begin()) {
+    // Initialize IMU via OrientationDetector
+    if (orientationDetector.begin()) {
         Serial.println("IMU initialized successfully");
     } else {
         Serial.println("IMU initialization failed!");
@@ -104,10 +96,14 @@ void setup() {
             simpleBLEPoll();
             delay(100);
             
-            // Show we're still waiting every 10 seconds
+            // Show we're still waiting every 10 seconds - distinguish between connection states
             static unsigned long lastStatusPrint = 0;
             if (millis() - lastStatusPrint > 10000) {
-                Serial.println("Waiting for BLE configuration...");
+                if (BLE.connected()) {
+                    Serial.println("BLE connected, waiting for configuration");
+                } else {
+                    Serial.println("Waiting for BLE connection");
+                }
                 lastStatusPrint = millis();
             }
         }
@@ -158,9 +154,32 @@ void setup() {
     } else {
         Serial.println();
         Serial.println("WiFi connection failed!");
-        ledController.showError();
-        while(1) delay(1000); // Stop here if WiFi fails
-        // TODO: Should re-enable BLE for new configuration attempt
+        Serial.println("Returning to BLE advertising mode for reconfiguration...");
+        
+        // Show WiFi error pattern for 5 seconds to indicate failure
+        ledController.showWiFiError();
+        unsigned long errorStartTime = millis();
+        while (millis() - errorStartTime < 5000) {
+            ledController.updateBLEAnimation();
+            delay(50);
+        }
+        
+        // Restart device to go back to initial BLE advertising state
+        // This ensures we return to exactly the same state as startup
+        Serial.println("Restarting device to return to initial BLE advertising state...");
+        delay(1000); // Brief delay for serial message
+        
+        // Restart device (platform-specific)
+        #if defined(ARDUINO_ARCH_SAMD)
+            NVIC_SystemReset();
+        #elif defined(ARDUINO_NANO_RP2040_CONNECT)
+            // For Arduino Nano RP2040 Connect - use watchdog reset
+            watchdog_enable(1, 1);
+            while(1);
+        #else
+            // For other platforms, try NVIC reset
+            NVIC_SystemReset();
+        #endif
     }
     
     // Configure Toggl API with received values
@@ -183,20 +202,22 @@ Orientation lastOrientation = UNKNOWN;
 void loop() {
     // Simple orientation detection and time tracking loop
     
-    // Read IMU data
+    // Read IMU data using OrientationDetector
     float accelX, accelY, accelZ;
-    if (IMU.accelerationAvailable()) {
-        IMU.readAcceleration(accelX, accelY, accelZ);
-        
+    if (orientationDetector.readAcceleration(accelX, accelY, accelZ)) {
         // Detect current orientation
         Orientation currentOrientation = orientationDetector.detectOrientation(accelX, accelY, accelZ);
         
         // Check if orientation changed (with debouncing)
         if (orientationDetector.hasOrientationChanged(currentOrientation)) {
             handleOrientationChange(currentOrientation, accelX, accelY, accelZ);
+            orientationDetector.updateOrientation(currentOrientation);
             lastOrientation = currentOrientation;
         }
     }
+    
+    // Update LED animations for BLE status and WiFi errors
+    ledController.updateBLEAnimation();
     
     // Small delay for stability
     delay(Config::MAIN_LOOP_DELAY);

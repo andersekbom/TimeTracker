@@ -11,15 +11,9 @@ bool LEDController::begin() {
 
 void LEDController::initializeHardware() {
     // Detect board type and initialize appropriate LED hardware
-    if (LED_BUILTIN == 13) {
-        Serial.println("Using built-in LED on Nano 33 IoT");
-        useBuiltinLED = true;
-        pinMode(LED_BUILTIN, OUTPUT);
-        digitalWrite(LED_BUILTIN, LOW);
-    } else {
+    #if defined(ARDUINO_NANO_RP2040_CONNECT)
         Serial.println("Using RGB LED on Nano RP2040 Connect");
         useBuiltinLED = false;
-        #if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
         // Initialize WiFiNINA (required for LED control on RP2040)
         WiFiDrv::pinMode(25, OUTPUT); // Green LED
         WiFiDrv::pinMode(26, OUTPUT); // Red LED
@@ -29,8 +23,12 @@ void LEDController::initializeHardware() {
         WiFiDrv::digitalWrite(25, LOW);
         WiFiDrv::digitalWrite(26, LOW);
         WiFiDrv::digitalWrite(27, LOW);
-        #endif
-    }
+    #else
+        Serial.println("Using built-in LED on Nano 33 IoT");
+        useBuiltinLED = true;
+        pinMode(LED_BUILTIN, OUTPUT);
+        digitalWrite(LED_BUILTIN, HIGH); // HIGH = OFF for inverted LED
+    #endif
 }
 
 void LEDController::setColor(uint8_t red, uint8_t green, uint8_t blue) {
@@ -143,8 +141,8 @@ void LEDController::setBuiltinLED(uint8_t brightness) {
 }
 
 void LEDController::setRGBLED(uint8_t red, uint8_t green, uint8_t blue) {
-    #if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_NANO33BLE)
-    // The RGB LED is controlled through the NINA module
+    #if defined(ARDUINO_NANO_RP2040_CONNECT)
+    // The RGB LED is controlled through the NINA module on RP2040 Connect
     // Convert 0-255 range to PWM values and invert (LED is common anode)
     uint8_t redPWM = 255 - red;
     uint8_t greenPWM = 255 - green;
@@ -215,9 +213,28 @@ void LEDController::showBLEError() {
     }
 }
 
+void LEDController::showWiFiError() {
+    if (useBuiltinLED) {
+        // Start WiFi error animation: 2 blinks, wait 1 second, repeat
+        currentAnimation = WIFI_ERROR;
+        animationStartTime = millis();
+        animationStep = 0;
+        animationParam1 = 2;    // 2 blinks per cycle
+        animationParam2 = 150;  // 150ms on/off time for each blink
+    } else {
+        // Red color for RGB LED with slight flashing pattern
+        currentAnimation = WIFI_ERROR;
+        animationStartTime = millis();
+        animationStep = 0;
+        animationParam1 = 2;    // 2 blinks per cycle
+        animationParam2 = 150;  // 150ms on/off time for each blink
+        setColor(128, 0, 0); // Start with dim red
+    }
+}
+
 // Non-blocking animation update method
 void LEDController::updateBLEAnimation() {
-    if (!useBuiltinLED || currentAnimation == IDLE) {
+    if (currentAnimation == IDLE) {
         return; // No animation needed
     }
     
@@ -257,6 +274,63 @@ void LEDController::updateBLEAnimation() {
                     setBuiltinLED(255); // On
                 } else {
                     setBuiltinLED(0);   // Off
+                }
+            }
+            break;
+        }
+        
+        case WIFI_ERROR: {
+            // WiFi error pattern: blink, gap, blink, wait 1 second, repeat
+            int blinkOnTime = animationParam2;   // 150ms ON
+            int blinkOffTime = animationParam2;  // 150ms OFF
+            int gapTime = animationParam2;       // 150ms gap between blinks
+            int waitTime = 1000;                 // 1 second wait
+            
+            // Timing: ON(150) + OFF(150) + ON(150) + OFF(150) + WAIT(1000) = 1600ms total
+            int cycleDuration = (blinkOnTime + blinkOffTime) + gapTime + (blinkOnTime + blinkOffTime) + waitTime;
+            int cyclePosition = elapsed % cycleDuration;
+            
+            if (cyclePosition < blinkOnTime) {
+                // First blink ON phase
+                if (useBuiltinLED) {
+                    setBuiltinLED(255);
+                } else {
+                    setColor(255, 0, 0);
+                }
+            } else if (cyclePosition < (blinkOnTime + blinkOffTime)) {
+                // First blink OFF phase
+                if (useBuiltinLED) {
+                    setBuiltinLED(0);
+                } else {
+                    setColor(0, 0, 0);
+                }
+            } else if (cyclePosition < (blinkOnTime + blinkOffTime + gapTime)) {
+                // Gap between blinks (OFF)
+                if (useBuiltinLED) {
+                    setBuiltinLED(0);
+                } else {
+                    setColor(0, 0, 0);
+                }
+            } else if (cyclePosition < (blinkOnTime + blinkOffTime + gapTime + blinkOnTime)) {
+                // Second blink ON phase
+                if (useBuiltinLED) {
+                    setBuiltinLED(255);
+                } else {
+                    setColor(255, 0, 0);
+                }
+            } else if (cyclePosition < (blinkOnTime + blinkOffTime + gapTime + blinkOnTime + blinkOffTime)) {
+                // Second blink OFF phase
+                if (useBuiltinLED) {
+                    setBuiltinLED(0);
+                } else {
+                    setColor(0, 0, 0);
+                }
+            } else {
+                // Wait phase (1 second OFF)
+                if (useBuiltinLED) {
+                    setBuiltinLED(0);
+                } else {
+                    setColor(0, 0, 0);
                 }
             }
             break;

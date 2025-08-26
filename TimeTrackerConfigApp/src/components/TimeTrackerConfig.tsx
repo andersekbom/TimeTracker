@@ -36,8 +36,9 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
   onBack,
 }) => {
   // WiFi Configuration
-  const [wifiSSID, setWifiSSID] = useState('eichbaum');
-  const [wifiPassword, setWifiPassword] = useState('zooweedoobee');
+  const [wifiSSID, setWifiSSID] = useState('ParanoidAndroid');
+  const [wifiPassword, setWifiPassword] = useState('electro35');
+  const [showWifiPassword, setShowWifiPassword] = useState(false);
 
   // Provider Configuration from Setup
   const [providerConfig, setProviderConfig] = useState<ProviderConfiguration | null>(null);
@@ -291,15 +292,25 @@ export const TimeTrackerConfig: React.FC<TimeTrackerConfigProps> = ({
             scanButtonText="📶 Browse"
           />
 
-          <InputWithScan
-            label="WiFi Password"
-            required
-            value={wifiPassword}
-            onChangeText={setWifiPassword}
-            placeholder="Enter WiFi password"
-            secureTextEntry
-            onScan={() => handleQRScanRequest('wifi-password')}
-          />
+          <View>
+            <InputWithScan
+              label="WiFi Password"
+              required
+              value={wifiPassword}
+              onChangeText={setWifiPassword}
+              placeholder="Enter WiFi password"
+              secureTextEntry={!showWifiPassword}
+              onScan={() => handleQRScanRequest('wifi-password')}
+            />
+            <TouchableOpacity
+              style={styles.showPasswordButton}
+              onPress={() => setShowWifiPassword(!showWifiPassword)}
+            >
+              <Text style={styles.showPasswordText}>
+                {showWifiPassword ? '🙈 Hide Password' : '👁️ Show Password'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
 
@@ -633,5 +644,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  showPasswordButton: {
+    backgroundColor: '#E3F2FD',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  showPasswordText: {
+    color: '#2196F3',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

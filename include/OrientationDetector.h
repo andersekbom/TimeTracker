@@ -24,6 +24,7 @@ public:
     OrientationDetector(float orientationThreshold = 0.75f, unsigned long debounceMs = 5000);
     
     bool begin();
+    bool readAcceleration(float& accelX, float& accelY, float& accelZ);
     Orientation detectOrientation(float accelX, float accelY, float accelZ);
     bool hasOrientationChanged(Orientation newOrientation);
     void updateOrientation(Orientation newOrientation);

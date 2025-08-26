@@ -163,11 +163,7 @@ void test_always_configurable() {
 void setup() {
     // Initialize serial communication
     Serial.begin(115200);
-    while (!Serial && millis() < 5000) {
-        delay(100);
-    }
-    
-    delay(2000);
+    // No waiting for serial connection to allow standalone operation
     
     Serial.println("\n=====================================");
     Serial.println("TimeTracker BLE Minimal Test Suite");

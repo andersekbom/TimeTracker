@@ -101,11 +101,6 @@ void onWifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
         Serial.print(receivedSSID);
         Serial.println("'");
         
-        // Store the value for later reading
-        if (wifiSSIDChar) {
-            wifiSSIDChar->writeValue(base64Data);
-        }
-        
         // Update status
         if (statusChar) {
             statusChar->writeValue("ssid_received");
@@ -129,11 +124,6 @@ void onWifiPasswordWritten(BLEDevice central, BLECharacteristic characteristic) 
         Serial.print(", decoded length: ");
         Serial.print(receivedPassword.length());
         Serial.println(") - content hidden for security");
-        
-        // Store the value for later reading
-        if (wifiPasswordChar) {
-            wifiPasswordChar->writeValue(base64Data);
-        }
         
         // Update status
         if (statusChar) {
@@ -161,11 +151,6 @@ void onTogglTokenWritten(BLEDevice central, BLECharacteristic characteristic) {
         Serial.print(", decoded length: ");
         Serial.print(receivedToken.length());
         Serial.println(") - content hidden for security");
-        
-        // Store the value for later reading
-        if (togglTokenChar) {
-            togglTokenChar->writeValue(base64Data);
-        }
         
         // Update status
         if (statusChar) {
@@ -196,11 +181,6 @@ void onWorkspaceIdWritten(BLEDevice central, BLECharacteristic characteristic) {
         Serial.print(receivedWorkspace.length());
         Serial.print("): ");
         Serial.println(receivedWorkspace);
-        
-        // Store the value for later reading
-        if (workspaceIdChar) {
-            workspaceIdChar->writeValue(base64Data);
-        }
         
         // Update status
         if (statusChar) {
@@ -235,11 +215,6 @@ void onProjectIdsWritten(BLEDevice central, BLECharacteristic characteristic) {
         
         // Mark project IDs as received
         projectIdsReceived = true;
-        
-        // Store the value for later reading
-        if (projectIdsChar) {
-            projectIdsChar->writeValue(data, dataLength);
-        }
         
         // Update status
         if (statusChar) {
@@ -314,11 +289,11 @@ bool simpleBLEBegin() {
     
     // Create service and characteristics (only once)
     configService = new BLEService(TIMETRACKER_SERVICE_UUID);
-    wifiSSIDChar = new BLEStringCharacteristic(WIFI_SSID_CHAR_UUID, BLERead | BLEWrite, 128); // Increased for base64
-    wifiPasswordChar = new BLEStringCharacteristic(WIFI_PASSWORD_CHAR_UUID, BLERead | BLEWrite, 128); // Increased for base64
-    togglTokenChar = new BLEStringCharacteristic(TOGGL_TOKEN_CHAR_UUID, BLERead | BLEWrite, 512); // Increased for base64
-    workspaceIdChar = new BLEStringCharacteristic(WORKSPACE_ID_CHAR_UUID, BLERead | BLEWrite, 32); // Increased for base64
-    projectIdsChar = new BLECharacteristic(PROJECT_IDS_CHAR_UUID, BLERead | BLEWrite, 24); // 6 integers * 4 bytes
+    wifiSSIDChar = new BLEStringCharacteristic(WIFI_SSID_CHAR_UUID, BLEWrite, 128); // Increased for base64
+    wifiPasswordChar = new BLEStringCharacteristic(WIFI_PASSWORD_CHAR_UUID, BLEWrite, 128); // Increased for base64
+    togglTokenChar = new BLEStringCharacteristic(TOGGL_TOKEN_CHAR_UUID, BLEWrite, 512); // Increased for base64
+    workspaceIdChar = new BLEStringCharacteristic(WORKSPACE_ID_CHAR_UUID, BLEWrite, 32); // Increased for base64
+    projectIdsChar = new BLECharacteristic(PROJECT_IDS_CHAR_UUID, BLEWrite, 24); // 6 integers * 4 bytes
     statusChar = new BLEStringCharacteristic(STATUS_CHAR_UUID, BLERead | BLENotify, 32);
     
     // Set device name and store it
@@ -382,14 +357,6 @@ void simpleBLEPoll() {
         } else {
             Serial.println("WARNING: No device name to restore after disconnect!");
         }
-        
-        // Small delay to ensure disconnect is fully processed
-        delay(100);
-        
-        // Restart advertising to make device discoverable again
-        Serial.println("Restarting BLE advertising after disconnect...");
-        BLE.advertise();
-        Serial.println("Device is now advertising and discoverable again");
     }
     
     wasConnected = isCurrentlyConnected;

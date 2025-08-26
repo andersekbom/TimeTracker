@@ -15,13 +15,7 @@ namespace SystemUtils {
 
     void initializeSerial() {
         Serial.begin(Config::SERIAL_BAUD);
-        
-        // Optional serial connection with timeout for standalone operation
-        unsigned long serialTimeout = millis() + Config::SERIAL_TIMEOUT_MS;
-        while (!Serial && millis() < serialTimeout) {
-            delay(100);
-        }
-        
+        // No waiting for serial connection to allow standalone operation
         if (Serial) {
             Serial.println("TimeTracker Cube Starting...");
         }

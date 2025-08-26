@@ -23,6 +23,14 @@ bool OrientationDetector::begin() {
     return true;
 }
 
+bool OrientationDetector::readAcceleration(float& accelX, float& accelY, float& accelZ) {
+    if (IMU.accelerationAvailable()) {
+        IMU.readAcceleration(accelX, accelY, accelZ);
+        return true;
+    }
+    return false;
+}
+
 Orientation OrientationDetector::detectOrientation(float accelX, float accelY, float accelZ) {
     return determineOrientation(accelX, accelY, accelZ);
 }

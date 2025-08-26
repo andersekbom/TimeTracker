@@ -491,9 +491,7 @@ int freeRam() {
 
 void setup() {
     Serial.begin(9600);
-    while (!Serial && millis() < 5000) { delay(100); }
-    
-    delay(2000); // Let system stabilize
+    // No waiting for serial connection to allow standalone operation
     
     UNITY_BEGIN();
     

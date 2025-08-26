@@ -49,7 +49,13 @@ bool bleConnectAttempted = false;
 
 void setup() {
     Serial.begin(Config::SERIAL_BAUD);
-    // No waiting for serial connection to allow standalone operation
+    
+    // Optional serial connection with timeout for standalone operation
+    unsigned long serialTimeout = millis() + 3000; // 3 second timeout
+    while (!Serial && millis() < serialTimeout) {
+        delay(100);
+    }
+    
     if (Serial) {
         Serial.println("TimeTracker Cube Starting...");
     }

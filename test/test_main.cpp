@@ -119,11 +119,7 @@ void test_math_operations(void) {
 void setup() {
     // Initialize serial communication
     Serial.begin(115200);
-    while (!Serial && millis() < 5000) {
-        delay(100); // Wait for serial connection or timeout
-    }
-    
-    delay(2000); // Give time for serial monitor to connect
+    // No waiting for serial connection to allow standalone operation
     
     Serial.println("\n\n=================================");
     Serial.println("TimeTracker Firmware Test Suite");
