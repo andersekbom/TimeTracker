@@ -19,6 +19,7 @@ interface BLEScannerProps {
   onError: (error: string) => void;
   onStartConfiguration: () => void;
   onSetupTimeTracking?: () => void;
+  onShowHelp?: () => void;
   selectedDevice: TimeTrackerDevice | null;
   connectedDeviceName: string;
   isConnected: boolean;
@@ -31,6 +32,7 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
   onError, 
   onStartConfiguration, 
   onSetupTimeTracking,
+  onShowHelp,
   selectedDevice, 
   connectedDeviceName, 
   isConnected 
@@ -269,7 +271,14 @@ export const BLEScanner: React.FC<BLEScannerProps> = ({
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <Text style={styles.title}>Time Tracker Redux</Text>
+      <View style={styles.headerTop}>
+        <Text style={styles.title}>Time Tracker Redux</Text>
+        {onShowHelp && (
+          <TouchableOpacity style={styles.helpButton} onPress={onShowHelp}>
+            <Text style={styles.helpButtonText}>Info</Text>
+          </TouchableOpacity>
+        )}
+      </View>
       
       {/* Provider Setup Block */}
       <View style={styles.sectionBlock}>
@@ -358,6 +367,12 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     backgroundColor: '#FFFFFF'
   },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
   list: {
     flex: 1,
   },
@@ -371,9 +386,21 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
     color: '#333333',
+    flex: 1,
+  },
+  helpButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  helpButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   headerActions: {
     flexDirection: 'column',
