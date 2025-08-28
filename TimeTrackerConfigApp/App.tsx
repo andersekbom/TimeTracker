@@ -5,9 +5,10 @@ import { BLEScanner } from './src/components/BLEScanner';
 import { TimeTrackerConfig } from './src/components/TimeTrackerConfig';
 import { SimpleTimeTrackingSetup } from './src/components/SimpleTimeTrackingSetup';
 import { TimeTrackingProviderList } from './src/components/TimeTrackingProviderList';
+import { HelpScreen } from './src/components/HelpScreen';
 import { TimeTrackerDevice } from './src/types/TimeTrackerBLE';
 
-type AppScreen = 'scanner' | 'config' | 'providers' | 'setup';
+type AppScreen = 'scanner' | 'config' | 'providers' | 'setup' | 'help';
 
 export default function App() {
   const [selectedDevice, setSelectedDevice] = useState<TimeTrackerDevice | null>(null);
@@ -95,6 +96,14 @@ export default function App() {
     setCurrentScreen('providers');
   };
 
+  const handleShowHelp = () => {
+    setCurrentScreen('help');
+  };
+
+  const handleBackFromHelp = () => {
+    setCurrentScreen('scanner');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="auto" />
@@ -109,6 +118,7 @@ export default function App() {
             onError={handleError}
             onStartConfiguration={handleStartConfiguration}
             onSetupTimeTracking={handleSetupTimeTracking}
+            onShowHelp={handleShowHelp}
             selectedDevice={selectedDevice}
             connectedDeviceName={connectedDeviceName}
             isConnected={isConnected}
@@ -125,6 +135,10 @@ export default function App() {
           providerId={selectedProviderId || 'toggl'}
           onComplete={handleSetupComplete}
           onBack={handleBackToProviders}
+        />
+      ) : currentScreen === 'help' ? (
+        <HelpScreen
+          onBack={handleBackFromHelp}
         />
       ) : (
         <TimeTrackerConfig
