@@ -58,6 +58,7 @@ String getWifiPassword();
 String getTogglToken();
 String getWorkspaceId();
 int* getProjectIds();
+void testAuthCallbackSetup();
 
 void setup() {
     // Initialize serial communication
@@ -200,6 +201,9 @@ String currentTimeEntryId = "";
 Orientation lastOrientation = UNKNOWN;
 
 void loop() {
+    // Poll BLE for incoming events and callbacks
+    BLE.poll();
+    
     // Simple orientation detection and time tracking loop
     
     // Read IMU data using OrientationDetector

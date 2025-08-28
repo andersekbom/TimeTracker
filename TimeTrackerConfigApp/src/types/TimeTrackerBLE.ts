@@ -9,6 +9,8 @@ export const BLE_CHARACTERISTICS = {
   WORKSPACE_ID: '6ba7b814-9dad-11d1-80b4-00c04fd430c8',
   PROJECT_IDS: '6ba7b815-9dad-11d1-80b4-00c04fd430c8',
   STATUS: '6ba7b816-9dad-11d1-80b4-00c04fd430c8',
+  AUTH_CHALLENGE: '6ba7b817-9dad-11d1-80b4-00c04fd430c8',
+  AUTH_RESPONSE: '6ba7b818-9dad-11d1-80b4-00c04fd430c8',
 } as const;
 
 // Configuration data interfaces

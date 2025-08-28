@@ -18,7 +18,6 @@ private:
     bool hasRuntimeConfig = false;
     
     String base64Encode(const String& str);
-    String getCurrentTimeISO();
 
 public:
     TogglAPI(HttpClient* httpClient);

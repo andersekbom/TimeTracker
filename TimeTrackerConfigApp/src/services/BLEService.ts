@@ -153,8 +153,15 @@ export class TimeTrackerBLEService {
       
       // Discover services and characteristics
       await this.device.discoverAllServicesAndCharacteristics();
+      
+      // Security: Validate that device has expected service structure
+      await this.validateServiceStructure();
+      
+      // Security: Perform challenge-response authentication
+      await this.performChallengeResponseAuth();
+      
       // Log using the stored name (might be more reliable than runtime this.device.name)
-      console.log(`Connected to device: ${deviceName}`);
+      console.log(`Connected to device: ${deviceName} - authenticated and ready`);
       
       // Notify connection state change using the known name
       this.notifyConnectionStateChange(true, deviceName);
@@ -164,6 +171,207 @@ export class TimeTrackerBLEService {
       this.notifyConnectionStateChange(false);
       throw new Error(`Failed to connect to device: ${error}`);
     }
+  }
+
+  // Security: Perform challenge-response authentication
+  private async performChallengeResponseAuth(): Promise<void> {
+    if (!this.device) {
+      throw new Error('No device connected for authentication');
+    }
+
+    console.log('Security: Starting challenge-response authentication...');
+    
+    const service = await this.device.services();
+    const timeTrackerService = service.find(s => s.uuid === TIMETRACKER_SERVICE_UUID);
+    if (!timeTrackerService) {
+      throw new Error('TimeTracker service not found for authentication');
+    }
+
+    const characteristics = await timeTrackerService.characteristics();
+    const challengeChar = characteristics.find(c => c.uuid === BLE_CHARACTERISTICS.AUTH_CHALLENGE);
+    const responseChar = characteristics.find(c => c.uuid === BLE_CHARACTERISTICS.AUTH_RESPONSE);
+    
+    if (!challengeChar || !responseChar) {
+      throw new Error('Authentication characteristics not found');
+    }
+
+    // Generate random 16-byte challenge
+    const challenge = new Uint8Array(16);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(challenge);
+    } else {
+      // Fallback for environments without crypto API
+      for (let i = 0; i < 16; i++) {
+        challenge[i] = Math.floor(Math.random() * 256);
+      }
+    }
+
+    // Set up notification listener for response BEFORE sending challenge
+    console.log('Security: Setting up notification subscription...');
+    
+    let authPromiseResolve: (value: any) => void;
+    let authPromiseReject: (error: any) => void;
+    
+    const authPromise = new Promise((resolve, reject) => {
+      authPromiseResolve = resolve;
+      authPromiseReject = reject;
+    });
+
+    // Listen for response notification first
+    const subscription = responseChar.monitor((error, characteristic) => {
+      if (error) {
+        console.log('Security: Notification error:', error);
+        authPromiseReject(error);
+        return;
+      }
+      
+      if (characteristic?.value) {
+        console.log('Security: Received notification response from device');
+        authPromiseResolve(characteristic.value);
+      } else {
+        console.log('Security: Notification received but no data');
+        authPromiseReject(new Error('No response data received'));
+      }
+    });
+
+    // Wait a moment for subscription to be active
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Set up timeout for authentication AFTER subscription is ready
+    const authTimeout = setTimeout(() => {
+      console.log('Security: Authentication timeout reached');
+      authPromiseReject(new Error('Authentication timeout - no response from device'));
+    }, 5000); // Increased to 5 seconds
+
+    // Send challenge to device (single base64 encoding like response)
+    const challengeBuffer = Buffer.from(challenge);
+    const challengeBase64 = challengeBuffer.toString('base64');
+    console.log('Security: Sending challenge to device...');
+    console.log('Security: Challenge base64:', challengeBase64);
+    console.log('Security: Challenge base64 length:', challengeBase64.length);
+    
+    // Send single-encoded challenge directly
+    await this.device.writeCharacteristicWithResponseForService(
+      TIMETRACKER_SERVICE_UUID,
+      BLE_CHARACTERISTICS.AUTH_CHALLENGE,
+      challengeBase64
+    );
+    
+    console.log('Security: Challenge sent, waiting for notification response...');
+    
+    // Wait for response notification
+    let deviceResponse;
+    try {
+      deviceResponse = await authPromise;
+      clearTimeout(authTimeout);
+      subscription.remove(); // Clean up subscription
+      console.log('Security: Authentication response received successfully');
+    } catch (error) {
+      clearTimeout(authTimeout);
+      subscription.remove(); // Clean up subscription
+      throw error;
+    }
+    const expectedResponse = this.generateExpectedResponse(challenge);
+    
+    // Verify response matches expected
+    if (!this.compareResponses(deviceResponse, expectedResponse)) {
+      throw new Error('Authentication failed: Device response does not match expected value');
+    }
+
+    console.log('Security: Challenge-response authentication successful');
+  }
+
+  // Generate expected response using same algorithm as device
+  private generateExpectedResponse(challenge: Uint8Array): Uint8Array {
+    const deviceSecret = new TextEncoder().encode('TimeTracker2025\0'); // Match firmware secret
+    const response = new Uint8Array(16);
+    
+    for (let i = 0; i < 16; i++) {
+      response[i] = challenge[i] ^ deviceSecret[i] ^ ((i * 7) & 0xFF); // Same algorithm as firmware
+    }
+    
+    return response;
+  }
+
+  // Compare two response arrays
+  private compareResponses(received: any, expected: Uint8Array): boolean {
+    if (!received) return false;
+    
+    // Handle raw binary response (Arduino sends 16 raw bytes like challenge)
+    console.log('Security: Raw received response:', received);
+    console.log('Security: Raw received length:', received.length);
+    
+    // Convert the received base64 back to raw bytes (BLE auto-encodes)
+    let receivedBytes: Uint8Array;
+    try {
+      receivedBytes = this.base64ToUint8Array(received); // Decode what BLE encoded
+      console.log('Security: Decoded bytes:', Array.from(receivedBytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    } catch (error) {
+      console.log('Security: Base64 decode failed, trying direct conversion');
+      // If it's already raw bytes, handle differently
+      receivedBytes = new Uint8Array(16);
+      return false; // For now, require base64 format
+    }
+    
+    console.log('Security: Response validation - decoded length:', receivedBytes.length);
+    if (receivedBytes.length !== 16) {
+      console.log('Security: Expected 16 bytes, got', receivedBytes.length);
+      return false;
+    }
+    
+    for (let i = 0; i < 16; i++) {
+      if (receivedBytes[i] !== expected[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Helper: Convert Uint8Array to base64 string for BLE transmission
+  private uint8ArrayToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  // Helper: Convert base64 string back to Uint8Array
+  private base64ToUint8Array(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  // Security: Validate service structure to prevent malicious device connections
+  private async validateServiceStructure(): Promise<void> {
+    if (!this.device) {
+      throw new Error('No device connected for validation');
+    }
+
+    // Check that our main service exists
+    const services = await this.device.services();
+    const timeTrackerService = services.find(s => s.uuid === TIMETRACKER_SERVICE_UUID);
+    
+    if (!timeTrackerService) {
+      throw new Error(`Security validation failed: TimeTracker service ${TIMETRACKER_SERVICE_UUID} not found`);
+    }
+
+    // Validate all required characteristics are present
+    const characteristics = await timeTrackerService.characteristics();
+    const requiredCharUUIDs = Object.values(BLE_CHARACTERISTICS);
+    
+    for (const requiredUUID of requiredCharUUIDs) {
+      const characteristic = characteristics.find(c => c.uuid === requiredUUID);
+      if (!characteristic) {
+        throw new Error(`Security validation failed: Required characteristic ${requiredUUID} not found`);
+      }
+    }
+
+    console.log(`Security: Service structure validation successful - ${requiredCharUUIDs.length} required characteristics present`);
   }
 
   // Disconnect from device

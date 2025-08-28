@@ -37,6 +37,8 @@ BLEStringCharacteristic* togglTokenChar = nullptr;
 BLEStringCharacteristic* workspaceIdChar = nullptr;
 BLECharacteristic* projectIdsChar = nullptr;
 BLEStringCharacteristic* statusChar = nullptr;
+BLEStringCharacteristic* authChallengeChar = nullptr;
+BLECharacteristic* authResponseChar = nullptr;
 
 // Configuration data storage
 String receivedSSID = "";
@@ -51,8 +53,109 @@ bool projectIdsReceived = false;
 bool bleInitialized = false;
 String deviceName = "";
 
+// Authentication state
+bool isAuthenticated = false;
+uint8_t currentChallenge[16] = {0};
+const uint8_t deviceSecret[16] = {0x54, 0x69, 0x6d, 0x65, 0x54, 0x72, 0x61, 0x63, 0x6b, 0x65, 0x72, 0x32, 0x30, 0x32, 0x35, 0x00}; // "TimeTracker2025"
+
 // Forward declaration
 void checkConfigComplete();
+
+// Forward declaration of test function
+void testAuthCallbackSetup();
+
+// Simple base64 encoder for binary response transmission
+String base64EncodeBinary(const uint8_t* data, size_t length) {
+    const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    String encoded = "";
+    size_t i = 0;
+    unsigned char char_array_3[3];
+    unsigned char char_array_4[4];
+
+    while (i < length) {
+        char_array_3[0] = data[i++];
+        char_array_3[1] = (i < length) ? data[i++] : 0;
+        char_array_3[2] = (i < length) ? data[i++] : 0;
+
+        char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+        char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+        char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+        char_array_4[3] = char_array_3[2] & 0x3f;
+
+        for (int j = 0; j < 4; j++) {
+            encoded += base64_chars[char_array_4[j]];
+        }
+    }
+
+    // Add padding
+    while (encoded.length() % 4) {
+        encoded += '=';
+    }
+
+    return encoded;
+}
+
+// Simple base64 decoder for challenge data
+int base64DecodeBinary(const String& encoded, uint8_t* output, size_t maxOutputLen) {
+    const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int in_len = encoded.length();
+    int i = 0;
+    int in = 0;
+    unsigned char char_array_4[4], char_array_3[3];
+    size_t outputIndex = 0;
+
+    while (in_len-- && (encoded[in] != '=') && outputIndex < maxOutputLen) {
+        // Find character in base64 alphabet
+        char c = encoded[in];
+        int pos = -1;
+        for (int j = 0; j < 64; j++) {
+            if (base64_chars[j] == c) {
+                pos = j;
+                break;
+            }
+        }
+        if (pos == -1) break; // Invalid character
+        
+        char_array_4[i++] = pos;
+        in++;
+        
+        if (i == 4) {
+            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+            char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+            char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+            for (i = 0; i < 3 && outputIndex < maxOutputLen; i++) {
+                output[outputIndex++] = char_array_3[i];
+            }
+            i = 0;
+        }
+    }
+
+    if (i && outputIndex < maxOutputLen) {
+        for (int j = 0; j < i; j++) {
+            char_array_4[j] = char_array_4[j];
+        }
+        for (int j = i; j < 4; j++) {
+            char_array_4[j] = 0;
+        }
+
+        char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+        char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+
+        for (int j = 0; j < i - 1 && outputIndex < maxOutputLen; j++) {
+            output[outputIndex++] = char_array_3[j];
+        }
+    }
+
+    return (int)outputIndex;
+}
+
+// Simple authentication response generation (XOR-based for simplicity)
+void generateAuthResponse(const uint8_t* challenge, uint8_t* response) {
+    for (int i = 0; i < 16; i++) {
+        response[i] = challenge[i] ^ deviceSecret[i] ^ ((i * 7) & 0xFF); // Add position-based salt
+    }
+}
 
 // UUIDs
 #define TIMETRACKER_SERVICE_UUID "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
@@ -62,6 +165,8 @@ void checkConfigComplete();
 #define WORKSPACE_ID_CHAR_UUID  "6ba7b814-9dad-11d1-80b4-00c04fd430c8"
 #define PROJECT_IDS_CHAR_UUID   "6ba7b815-9dad-11d1-80b4-00c04fd430c8"
 #define STATUS_CHAR_UUID        "6ba7b816-9dad-11d1-80b4-00c04fd430c8"
+#define AUTH_CHALLENGE_CHAR_UUID "6ba7b817-9dad-11d1-80b4-00c04fd430c8"
+#define AUTH_RESPONSE_CHAR_UUID  "6ba7b818-9dad-11d1-80b4-00c04fd430c8"
 
 // Callback functions
 void onWifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
@@ -110,6 +215,12 @@ void onWifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
         if (statusChar) {
             statusChar->writeValue("ssid_received");
         }
+        
+        // Check if configuration is now complete
+        checkConfigComplete();
+    } else {
+        Serial.print("Invalid WiFi SSID length: ");
+        Serial.println(length);
     }
 }
 
@@ -253,6 +364,120 @@ void onProjectIdsWritten(BLEDevice central, BLECharacteristic characteristic) {
     }
 }
 
+void onAuthChallengeWritten(BLEDevice central, BLECharacteristic characteristic) {
+    Serial.println("=== AUTHENTICATION CHALLENGE CALLBACK TRIGGERED ===");
+    Serial.print("Timestamp: ");
+    Serial.println(millis());
+    Serial.print("Central address: ");
+    Serial.println(central.address());
+    Serial.print("Characteristic UUID: ");
+    Serial.println(characteristic.uuid());
+    
+    // Get the base64 string from the characteristic
+    const uint8_t* rawData = characteristic.value();
+    int dataLength = characteristic.valueLength();
+    
+    Serial.print("Raw data length: ");
+    Serial.println(dataLength);
+    Serial.print("Raw data (hex): ");
+    for (int i = 0; i < dataLength; i++) {
+        if (rawData[i] < 16) Serial.print("0");
+        Serial.print(rawData[i], HEX);
+        Serial.print(" ");
+    }
+    Serial.println();
+    
+    String base64Data = "";
+    for (int i = 0; i < dataLength; i++) {
+        base64Data += (char)rawData[i];
+    }
+    Serial.println("Challenge base64: " + base64Data);
+    Serial.print("Base64 length: ");
+    Serial.println(base64Data.length());
+    
+    // Handle raw binary challenge data (mobile app sends 16 bytes directly)
+    uint8_t challenge[16];
+    int challengeLength = dataLength;
+    
+    if (challengeLength == 16) {
+        // Copy raw binary data directly
+        for (int i = 0; i < 16; i++) {
+            challenge[i] = rawData[i];
+        }
+        Serial.println("Using raw binary challenge data");
+    } else {
+        // Fallback: try base64 decoding if not 16 bytes
+        Serial.println("Attempting base64 decode...");
+        challengeLength = base64DecodeBinary(base64Data, challenge, 16);
+    }
+    
+    Serial.print("Final challenge length: ");
+    Serial.println(challengeLength);
+    Serial.print("Challenge (hex): ");
+    for (int i = 0; i < challengeLength; i++) {
+        if (challenge[i] < 16) Serial.print("0");
+        Serial.print(challenge[i], HEX);
+        Serial.print(" ");
+    }
+    Serial.println();
+    
+    if (challengeLength == 16) {
+        
+        // Store challenge and generate response
+        memcpy(currentChallenge, challenge, 16);
+        
+        uint8_t response[16];
+        generateAuthResponse(challenge, response);
+        
+        Serial.print("Generated response (hex): ");
+        for (int i = 0; i < 16; i++) {
+            if (response[i] < 16) Serial.print("0");
+            Serial.print(response[i], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+        
+        // Send response as raw binary (same as challenge format)
+        Serial.print("Generated response (hex): ");
+        for (int i = 0; i < 16; i++) {
+            if (response[i] < 16) Serial.print("0");
+            Serial.print(response[i], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+        Serial.println("Sending response as raw binary data");
+        
+        // Send response via notification as raw binary
+        if (authResponseChar) {
+            // For notifications, we write the raw binary value
+            Serial.println("Writing raw binary response to characteristic for notification...");
+            bool writeSuccess = authResponseChar->writeValue(response, 16);
+            Serial.print("Write result: ");
+            Serial.println(writeSuccess ? "SUCCESS" : "FAILED");
+            Serial.println("=== AUTHENTICATION RESPONSE SENT VIA NOTIFICATION ===");
+            
+            // Mark as authenticated for this session
+            isAuthenticated = true;
+            
+            if (statusChar) {
+                statusChar->writeValue("authenticated");
+            }
+        } else {
+            Serial.println("ERROR: authResponseChar is NULL!");
+        }
+    } else {
+        Serial.print("Invalid decoded challenge length - expected 16 bytes, got ");
+        Serial.println(challengeLength);
+        isAuthenticated = false;
+        
+        if (statusChar) {
+            statusChar->writeValue("auth_failed");
+        }
+    }
+    
+    Serial.println("=== AUTHENTICATION CALLBACK COMPLETE ===");
+}
+
 void checkConfigComplete() {
     // Check if we have ALL required configuration (WiFi + Toggl token + workspace ID + project IDs)
     if (receivedSSID.length() > 0 && receivedPassword.length() > 0 && 
@@ -320,6 +545,12 @@ bool simpleBLEBegin() {
     workspaceIdChar = new BLEStringCharacteristic(WORKSPACE_ID_CHAR_UUID, BLERead | BLEWrite, 32); // Increased for base64
     projectIdsChar = new BLECharacteristic(PROJECT_IDS_CHAR_UUID, BLERead | BLEWrite, 24); // 6 integers * 4 bytes
     statusChar = new BLEStringCharacteristic(STATUS_CHAR_UUID, BLERead | BLENotify, 32);
+    authChallengeChar = new BLEStringCharacteristic(AUTH_CHALLENGE_CHAR_UUID, BLERead | BLEWrite | BLEWriteWithoutResponse, 32); // base64 challenge string
+    authResponseChar = new BLECharacteristic(AUTH_RESPONSE_CHAR_UUID, BLERead | BLENotify, 16); // raw binary response
+    
+    Serial.println("Authentication characteristics created:");
+    Serial.println("  Challenge UUID: " AUTH_CHALLENGE_CHAR_UUID);
+    Serial.println("  Response UUID: " AUTH_RESPONSE_CHAR_UUID);
     
     // Set device name and store it
     String macAddress = BLE.address();
@@ -340,6 +571,9 @@ bool simpleBLEBegin() {
     workspaceIdChar->setEventHandler(BLEWritten, onWorkspaceIdWritten);
     projectIdsChar->setEventHandler(BLEWritten, onProjectIdsWritten);
     
+    // Set authentication handler
+    authChallengeChar->setEventHandler(BLEWritten, onAuthChallengeWritten);
+    
     // Add characteristics to service
     configService->addCharacteristic(*wifiSSIDChar);
     configService->addCharacteristic(*wifiPasswordChar);
@@ -347,6 +581,8 @@ bool simpleBLEBegin() {
     configService->addCharacteristic(*workspaceIdChar);
     configService->addCharacteristic(*projectIdsChar);
     configService->addCharacteristic(*statusChar);
+    configService->addCharacteristic(*authChallengeChar);
+    configService->addCharacteristic(*authResponseChar);
     
     // Add service to BLE
     BLE.addService(*configService);
@@ -362,14 +598,47 @@ bool simpleBLEBegin() {
     Serial.println("Device name: " + deviceName);
     Serial.println("Ready for configuration via TimeTrackerConfigApp");
     
+    // Test callback setup
+    testAuthCallbackSetup();
+    
     return true;
 }
 
 void simpleBLEPoll() {
     static bool wasConnected = false;
+    static unsigned long lastPollTime = 0;
+    static unsigned long pollCount = 0;
+    
     bool isCurrentlyConnected = BLE.connected();
     
+    // Poll BLE - this is CRITICAL for callbacks to work
     BLE.poll();
+    
+    // Debug: Track polling frequency
+    pollCount++;
+    if (millis() - lastPollTime > 5000) { // Every 5 seconds
+        Serial.print("BLE Poll stats - Count: ");
+        Serial.print(pollCount);
+        Serial.print(", Connected: ");
+        Serial.print(isCurrentlyConnected ? "YES" : "NO");
+        if (isCurrentlyConnected && BLE.central()) {
+            Serial.print(", Central: ");
+            Serial.print(BLE.central().address());
+        }
+        Serial.println();
+        lastPollTime = millis();
+        pollCount = 0;
+    }
+    
+    // Detect connection events
+    if (!wasConnected && isCurrentlyConnected) {
+        Serial.println("=== BLE CLIENT CONNECTED ===");
+        if (BLE.central()) {
+            Serial.print("Central address: ");
+            Serial.println(BLE.central().address());
+        }
+        Serial.println("Ready to receive authentication challenge...");
+    }
     
     // Detect disconnect event and restore device name
     if (wasConnected && !isCurrentlyConnected) {
@@ -423,4 +692,20 @@ extern "C" void updateBLEStatus(const char* status) {
     if (statusChar) {
         statusChar->writeValue(status);
     }
+}
+
+// Make test function externally callable
+void testAuthCallbackSetup() {
+    Serial.println("=== TESTING AUTH CALLBACK SETUP ===");
+    Serial.print("authChallengeChar pointer: ");
+    Serial.println(authChallengeChar ? "VALID" : "NULL");
+    if (authChallengeChar) {
+        Serial.print("Characteristic UUID: ");
+        Serial.println(authChallengeChar->uuid());
+        Serial.print("Properties: ");
+        Serial.println(authChallengeChar->properties(), BIN);
+        Serial.print("Value length: ");
+        Serial.println(authChallengeChar->valueLength());
+    }
+    Serial.println("=== END CALLBACK TEST ===");
 }

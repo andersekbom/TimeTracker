@@ -43,54 +43,6 @@ String TogglAPI::base64Encode(const String& str) {
     return encoded;
 }
 
-String TogglAPI::getCurrentTimeISO() {
-    // Use a simplified timestamp approach for Toggl API
-    // Since we only need relative timing and stop entries use server time,
-    // we can use a base date plus elapsed milliseconds
-    
-    unsigned long secondsSinceStart = millis() / 1000;
-    
-    // Use a fixed base date (e.g., 2025-01-01) plus elapsed time
-    // This provides consistent relative timing without NTP dependency
-    int year = 2025;
-    int month = 1;
-    int day = 1;
-    
-    // Add elapsed days
-    int daysElapsed = secondsSinceStart / 86400;
-    day += daysElapsed;
-    
-    // Simple month overflow handling
-    while (day > 31) {
-        day -= 31;
-        month++;
-        if (month > 12) {
-            month = 1;
-            year++;
-        }
-    }
-    
-    // Calculate time of day
-    unsigned long secondsToday = secondsSinceStart % 86400;
-    unsigned long hours = secondsToday / 3600;
-    unsigned long minutes = (secondsToday % 3600) / 60;
-    unsigned long seconds = secondsToday % 60;
-
-    // Format as ISO 8601 string
-    String iso = String(year) + "-";
-    if (month < 10) iso += "0";
-    iso += String(month) + "-";
-    if (day < 10) iso += "0";
-    iso += String(day) + "T";
-    if (hours < 10) iso += "0";
-    iso += String(hours) + ":";
-    if (minutes < 10) iso += "0";
-    iso += String(minutes) + ":";
-    if (seconds < 10) iso += "0";
-    iso += String(seconds) + "Z";
-
-    return iso;
-}
 
 
 
@@ -113,7 +65,7 @@ bool TogglAPI::startTimeEntry(int orientationIndex, const String& description) {
         timeEntry["project_id"] = projectId;
     }
     
-    timeEntry["start"] = getCurrentTimeISO();
+    // Let server set start time to current server time
     timeEntry["duration"] = -1;
     timeEntry["created_with"] = "TimeTracker Redux";
 
